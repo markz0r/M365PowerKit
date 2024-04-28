@@ -1,0 +1,9 @@
+# Ignore all files and directories except for *.psd1, *.psm1 README.md, LICENSE, and .gitignore
+*
+!*.psd1
+!*.psm1
+!README.md
+!LICENSE
+!.gitignore
+!.gitattributes
+!LICENSE.md
