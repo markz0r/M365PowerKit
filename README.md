@@ -19,6 +19,7 @@ This PowerShell module provides 2 main functions:
 
 - Windows PowerShell 7.3 or later
 - Microsoft 365 Exchange Online account with appropriate permissions
+- MS Outlook 2016 or later installed on the machine running the script
 
 ## Usage
 
