@@ -76,7 +76,7 @@ GitHub: https://github.com/markz0r/Get-M365ExchangeAttachmentsBySearch
 # On any error, stop the script
 # Function: Get-M365ExchangeAttachments
 # Description: This is the main function that calls the other functions. It takes a user principal name (UPN), mailbox name, start date, and subject as parameters.
-function Get-M365ExchangeAttachments {
+function Get-M365ExchangeAttachmentsBySearch {
     param (
         [Parameter(Mandatory = $false)]
         [string]$UPN,
@@ -248,10 +248,18 @@ function Get-M365ExchangeAttachmentsFromSearch {
     Write-Debug 'Get-M365ExchangeAttachmentsFromSearch: Script completed successfully'
 }
 
+# Function: Check PowerShell version and edition
+# Description: This function checks the PowerShell version and edition and returns the version and edition.
+function Test-PowerShellVersion {
+    $MIN_PS_VERSION = (7, 3)
+    if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
+}
 
 # Function: Install-Dependencies
 # Description: This function installs the required modules and dependencies for the script to run.
 function Install-Dependencies {
+    Write-Debug 'Checking PowerShell version...'
+    Test-PowerShellVersion
     Write-Debug 'Installing required PS modules...'
     Get-PSModules
     Write-Debug 'Required modules installed successfully...'
@@ -261,37 +269,31 @@ function Install-Dependencies {
 }
 
 function Get-ClickOnceApplication {
-    $ClickOnceApp = (Get-ChildItem -Path "$($env:LOCALAPPDATA)\Apps\2.0\" -Filter microsoft.office.client.discovery.unifiedexporttool.exe -Recurse).FullName | Where-Object { $_ -notmatch '_none_' } | Select-Object -First 1
-    $ClickOnceAppUri = 'https://complianceclientsdf.blob.core.windows.net/v16/Microsoft.Office.Client.Discovery.UnifiedExportTool.application'
-    if ($ClickOnceApp) {
-        Write-Debug "ClickOnce Application Installed - Path: $ClickOnceApp"
-    }
-    else {
-        try {
-            Write-Debug 'Starting installation of UnifiedExportTool Application via browser'
-            Start-Process -FilePath $ClickOnceAppUri
-            # Ask user to hit enter once the application is installed or 'c' to cancel and install manually
-            $Input = Read-Host 'Press Enter once the application is installed or "c" to cancel and install manually'
-            if ($Input -eq 'c') {
-                # fail, invoking catch block
-                throw 'User cancelled installation of UnifiedExportTool Application'
-            }
-            else {
-                Write-Debug 'Continuing with the script...'
-            }
-        }
-        catch {
-            Write-Debug "Failed to install UnifiedExportTool Application, suggest installing manually via: $ClickOnceAppUri"
-            Write-Error 'Failed to install UnifiedExportTool Application'
+    $Default_Path = "$($env:LOCALAPPDATA)\Apps\2.0\"
+    $Default_Filename = 'microsoft.office.client.discovery.unifiedexporttool.exe'
+    $Default_URL = 'https://complianceclientsdf.blob.core.windows.net/v16/Microsoft.Office.Client.Discovery.UnifiedExportTool.application'
+    function Write-ClickOnceInstructuions {
+        Write-Host 'To install the Unified Export Tool manually, follow these steps:'
+        Write-Host "   - Open a browser and navigate to: $Default_URL"
+        Write-Host '   - Click on the "Install" button to download and install the application'
+        Write-Host '   - Once the installation is complete, hit "C" to continue or any other key to exit'
+        $Key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode
+        if ($Key -ne 67) {
+            Write-Error 'Failed to get ClickOnceApplication'
+            Write-Host 'Exiting script...'
+            exit
         }
     }
-    $ClickOnceApp = (Get-ChildItem -Path "$($env:LOCALAPPDATA)\Apps\2.0\" -Filter microsoft.office.client.discovery.unifiedexporttool.exe -Recurse).FullName | Where-Object { $_ -notmatch '_none_' } | Select-Object -First 1
-    if (-not $ClickOnceApp) {
+    while ((-not (Test-Path -Path $Default_Path -PathType Container)) -or (-not(Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse))) {
+        Write-Debug "Failed to get ClickOnceApplication, looking in "
+        Write-ClickOnceInstructuions
+    }
+    $ClickOnceApp = (Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse).FullName | Where-Object { $_ -notmatch '_none_' } | Select-Object -First 1
+    while (!$ClickOnceApp) {
         Write-Debug 'Failed to get ClickOnceApplication, try manual install see:'
-        Write-Debug '   - https://learn.microsoft.com/en-us/purview/ediscovery-configure-edge-to-export-search-results#install-and-run-the-ediscovery-export-tool'
-        Write-Debug '   - https://complianceclientsdf.blob.core.windows.net/v16/Microsoft.Office.Client.Discovery.UnifiedExportTool.application'
-        Write-Error 'Failed to get ClickOnceApplication'
+        Write-ClickOnceInstructuions
     }
+    Write-Debug "ClickOnce Application Installed - Path: $ClickOnceApp"
     $ClickOnceApp
 }
 

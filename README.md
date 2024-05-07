@@ -8,18 +8,19 @@ This PowerShell module provides 2 main functions:
 
 ## Installation
 
-```powershell
-   git clone https://github.com/markz0r/Get-M365ExchangeAttachmentsBySearch.git
-   cd .\Get-M365ExchangeAttachmentsBySearch; Import-Module "Get-M365ExchangeAttachmentsBySearch.psd1" -Force
-   # To attempt automated installation of dependencies (possibly requires admin rights... but don't think so)
-    Get-M365ExchangeAttachments -InstallDepsOnly
-```
-
-## Prerequisites
+### Prerequisites
 
 - Windows PowerShell 7.3 or later
 - Microsoft 365 Exchange Online account with appropriate permissions
 - MS Outlook 2016 or later installed on the machine running the script
+
+```powershell
+   git clone https://github.com/markz0r/Get-M365ExchangeAttachmentsBySearch.git
+   cd .\Get-M365ExchangeAttachmentsBySearch; Import-Module ".\Get-M365ExchangeAttachmentsBySearch.psd1" -Force
+   # To attempt automated installation of dependencies (possibly requires admin rights... but don't think so)
+    Get-M365ExchangeAttachments -InstallDepsOnly
+```
+
 
 ## Usage
 
