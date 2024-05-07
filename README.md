@@ -27,7 +27,7 @@ This PowerShell module provides 2 main functions:
 ### Create a new search query and retrieve attachments
 
 ```powershell
-  Get-M365ExchangeAttachments -MailboxName "user@example.com" -UPN "admin@example.com" -StartDate "2024-04-20" -Subject "Important Policy Docs" -Sender "importantsenderdomainoraddress.com" -AttachmentExtension "pdf"
+  Get-M365ExchangeAttachmentsBySearch -MailboxName "user@example.com" -UPN "admin@example.com" -StartDate "2024-04-20" -Subject "Important Policy Docs" -Sender "importantsenderdomainoraddress.com" -AttachmentExtension "pdf"
 ```
 
 ### Retrieve attachments for an existing search query
