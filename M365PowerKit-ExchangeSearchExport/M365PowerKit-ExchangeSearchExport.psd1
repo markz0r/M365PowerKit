@@ -69,7 +69,7 @@
     # NestedModules = @()
 
     # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-    FunctionsToExport = @('M365PowerKit-ExchangeSearchExport', 'Get-M365ExchangeAttachmentsFromSearch')
+    FunctionsToExport = @('Export-NewExchangeSearch', 'Export-ExistingExchangeSearch')
     
 
     # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.

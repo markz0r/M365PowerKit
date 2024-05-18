@@ -9,7 +9,7 @@ This module contains functions for:
 .DESCRIPTION
 The module contains the following functions:
 - Get-M365ExchangeAttachments: This is the main function that calls the other functions. It takes a user principal name (UPN), mailbox name, start date, and subject as parameters.
-- Get-M365ExchangeAttachmentsFromSearch: This is an alternative way to run the script when a search is already created and completed. It only needs the search name and UPN.
+- Export-ExistingExchangeSearch: This is an alternative way to run the script when a search is already created and completed. It only needs the search name and UPN.
 
 .PARAMETER UPN 
 The user principal name (UPN) of the user running the script.
@@ -60,7 +60,7 @@ PS> Get-M365ExchangeAttachments -UPN "user@example.com" -MailboxName "mailbox@ex
 This example retrieves email attachments from the specified mailbox that have the subject "Important Documents*" and were received after 2024-01-01. The script will only include emails from the sender address that contains "test.example" and attachments with the extension ".pdf".
 
 .EXAMPLE
-PS> Get-M365ExchangeAttachmentsFromSearch -UPN "user@example.com" -SearchName "Search1"
+PS> Export-ExistingExchangeSearch -UPN "user@example.com" -SearchName "Search1"
 This example retrieves email attachments from a previously created and completed compliance search with the name "Search1".
 
 
@@ -72,11 +72,11 @@ The script will attempt to automatically download dependencies if they are not a
 GitHub: https://github.com/markz0r/M365PowerKit-ExchangeSearchExport
 #>
 
-
+$ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
 # On any error, stop the script
 # Function: Get-M365ExchangeAttachments
 # Description: This is the main function that calls the other functions. It takes a user principal name (UPN), mailbox name, start date, and subject as parameters.
-function M365PowerKit-ExchangeSearchExport {
+function Export-NewExchangeSearch {
     param (
         [Parameter(Mandatory = $false)]
         [string]$UPN,
@@ -87,7 +87,7 @@ function M365PowerKit-ExchangeSearchExport {
         [Parameter(Mandatory = $false)]
         [string]$StartDate,
         [Parameter(Mandatory = $false)]
-        [string]$Sender,
+        [string]$Sender_Address,
         [Parameter(Mandatory = $false)]
         [string]$AttachmentExtension,
         [Parameter(Mandatory = $false)]
@@ -97,26 +97,37 @@ function M365PowerKit-ExchangeSearchExport {
         [Parameter(Mandatory = $false)]
         [switch]$SkipConnIPS = $false,
         [Parameter(Mandatory = $false)]
-        [switch]$SkipDownload = $false,
-        [Parameter(Mandatory = $false)]
-        [switch]$DisableDebug = $false,
-        [Parameter(Mandatory = $false)]
-        [switch]$InstallDepsOnly = $false
+        [switch]$SkipDownload = $false
     )
-    # Catch no upn provided
-    if (!$InstallDepsOnly -and (!$UPN -or !$MailboxName -or !$Subject)) {
-        Write-Error 'Insufficient args provided, unless installing dependencies only, you must provide: "-UPN", "-MailboxName", "-StartDate", "-Subject" and "-Sender"parameters.'
-    } 
-    $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
-    if ($DisableDebug) {
-        $DebugPreference = 'SilentlyContinue'
+    # Read user input for required parameters if not provided
+    if (-not $UPN) {
+        $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
     }
-    if ($InstallDepsOnly) {
-        Install-Dependencies
-        return
+    if (-not $MailboxName) {
+        $MailboxName = Read-Host 'Enter the mailbox name of the user whose email attachments you want to retrieve (e.g.: user@onmicrosoft.com) [required]'
+    }
+    if (-not $StartDate) {
+        $StartDate = Read-Host 'Enter the start date for the search (e.g.: 2024-01-01) [required]'
+    }
+    if (-not $Subject) {
+        $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
+    }
+    # if subject is blank, set it to a wildcard
+    if (-not $Subject) {
+        $Subject = '*'
+    }
+    if (-not $Sender_Address) {
+        $Sender_Address = Read-Host 'Enter the sender of the email attachments you want to retrieve (e.g.: sender@vendor.com) [optional, hit Enter to skip]'
+    }
+    # if sender is blank, set it to a wildcard
+    if (-not $Sender_Address) {
+        $Sender_Address = '*'
+    }
+    if (-not $AttachmentExtension) {
+        $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
     }
     # If either or both of the StartDate and Subject parameters are not provided, advise user and ask if they want to continue anyway
-    if (-not $StartDate -or -not $Sender) {
+    if (-not $StartDate -or -not $Sender_Address) {
         # Provide red warning message to the user the parameters were not provide and this query may take a long time and create a large amount of data, make the text red
         Write-Debug 'Warning: You have not provided the StartDate and/or Sender parameters. This query may take a long time and create a large amount of data.' -ForegroundColor Red
         $Continue = Read-Host 'Do you want to continue anyway? (Y/N)'
@@ -139,29 +150,29 @@ function M365PowerKit-ExchangeSearchExport {
         Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
         $AttachmentExtension = ".$AttachmentExtension"
     }
-    # Import the required modules
-    Write-Debug 'Checking PSModules ...'
-    Get-PSModules
+    elseif ($AttachmentExtension -eq '') {
+        $AttachmentExtension = '*'
+    }
     if (-not $SkipConnIPS) {
         New-IPPSSession -UPN $UPN
     }
     $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
-    Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender..."
+    Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
     Write-Debug '--------------------------------------------------'
     Write-Debug "Search Name: $SearchName"
     Write-Debug '--------------------------------------------------'
-    New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender
+    New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
     Wait-CustomComplianceSearch -SearchName $SearchName
-    Get-M365ExchangeAttachmentsFromSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+    Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
 }
 
-# Function: Get-M365ExchangeAttachmentsFromSearch
+# Function: Export-ExistingExchangeSearch
 # Description: This is an alternative way to run the script when a search is already created and completed. It only needs the search name and UPN.
-function Get-M365ExchangeAttachmentsFromSearch {
+function Export-ExistingExchangeSearch {
     param (
         [Parameter(Mandatory = $false)]
         [string]$UPN,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$SearchName,
         [Parameter(Mandatory = $false)]
         [string]$AttachmentExtension,
@@ -172,13 +183,18 @@ function Get-M365ExchangeAttachmentsFromSearch {
         [Parameter(Mandatory = $false)]
         [switch]$SkipDownload = $false,
         [Parameter(Mandatory = $false)]
-        [string]$BASE_DIR = 'PSTExports',
-        [Parameter(Mandatory = $false)]
-        [switch]$DisableDebug = $false
+        [string]$BASE_DIR = 'PSTExports'
     )
-    $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
-    if ($DisableDebug) {
-        $DebugPreference = 'SilentlyContinue'
+    $EXAMPLE_SEARCH_NAME = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
+    # Read user input for required parameters if not provided
+    if (-not $UPN) {
+        $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
+    }
+    if (-not $SearchName) {
+        $SearchName = Read-Host "Enter the search name of the compliance search you want to export (e.g.: $EXAMPLE_SEARCH_NAME) [required]"
+    }
+    if (-not $AttachmentExtension) {
+        $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
     }
     $SEARCH_DIR = "$BASE_DIR\$SearchName"
     if (-not (Test-Path -Path $BASE_DIR -PathType Container)) {
@@ -190,19 +206,12 @@ function Get-M365ExchangeAttachmentsFromSearch {
     if (!$UPN -and !$SkipDownload) {
         Write-Error 'UPN is required to run the script, unless -SkipDownload is used...'
     } 
-    $ScriptParams = @{
-        Export_RunTime      = (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-        SearchName          = $SearchName
-        SkipModules         = $SkipModules
-        SkipConnIPS         = $SkipConnIPS
-        AttachmentExtension = $AttachmentExtension
-        SkipDownload        = $SkipDownload
-        BASE_DIR            = $BASE_DIR
-    }
-    $ScriptParams | Out-File -FilePath "$SEARCH_DIR\$SearchName-ScriptParams.txt"
     if ($AttachmentExtension -and $AttachmentExtension -notmatch '^\..*') {
         Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
         $AttachmentExtension = ".$AttachmentExtension"
+    }
+    else {
+        $AttachmentExtension = '*'
     }
     if (-not $SkipModules) {
         # Import the required modules
@@ -245,29 +254,51 @@ function Get-M365ExchangeAttachmentsFromSearch {
         Write-Debug 'Outlook process is running, closing the existing instance...'
         Stop-Process -Name OUTLOOK -Force
     }
-    Write-Debug 'Get-M365ExchangeAttachmentsFromSearch: Script completed successfully'
+    Write-Debug 'Export-ExistingExchangeSearch: Script completed successfully'
 }
 
-# Function: Check PowerShell version and edition
-# Description: This function checks the PowerShell version and edition and returns the version and edition.
-function Test-PowerShellVersion {
-    $MIN_PS_VERSION = (7, 3)
-    if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
+function New-KQLQuery {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$FDate,
+        [Parameter(Mandatory = $true)]
+        [string]$Subject,
+        [Parameter(Mandatory = $false)]
+        [string]$Sender_Address
+    )
+
+    $KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
+    if ($Sender_Address) {
+        $KQL_QUERY_STRING += ' AND (participants:{0})' -f $Sender_Address
+    }
+    $KQL_QUERY_STRING += ')'
+    return $KQL_QUERY_STRING
 }
 
-# Function: Install-Dependencies
-# Description: This function installs the required modules and dependencies for the script to run.
-function Install-Dependencies {
-    Write-Debug 'Checking PowerShell version...'
-    Test-PowerShellVersion
-    Write-Debug 'Installing required PS modules...'
-    Get-PSModules
-    Write-Debug 'Required modules installed successfully...'
-    Write-Debug 'Verifying/Installing Unified Export Tool...'
-    Get-ClickOnceApplication
-    Write-Debug 'ClickOnceApplication present...'
+# Function: New-CustomComplianceSearch
+# Description: This function creates a new compliance search in Exchange Online for a specific mailbox, date, and subject.
+function New-CustomComplianceSearch {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$MailboxName,
+        [Parameter(Mandatory = $true)]
+        [string]$SearchName,
+        [Parameter(Mandatory = $true)]
+        [string]$Subject,
+        [Parameter(Mandatory = $false)]
+        [string]$FDate,
+        [Parameter(Mandatory = $false)]
+        [string]$Sender_Address
+    )
+    # New-KQLQuery -StartDate "2024-04-10" -Subject "SSG-OpsWeekly" -Sender "sumologic.com"
+    # Create a new compliance search
+    $KQL_QUERY_STRING = New-KQLQuery -FDate $FDate -Subject $Subject -Sender $Sender_Address
+    New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
+    Write-Debug "Search created successfully - Search Name: $SearchName"
+    Start-Sleep -Seconds 5
+    Start-ComplianceSearch -Identity $SearchName
+    Write-Debug "Search started successfully - Search Name: $SearchName"
 }
-
 function Get-ClickOnceApplication {
     $Default_Path = "$($env:LOCALAPPDATA)\Apps\2.0\"
     $Default_Filename = 'microsoft.office.client.discovery.unifiedexporttool.exe'
@@ -280,12 +311,11 @@ function Get-ClickOnceApplication {
         $Key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode
         if ($Key -ne 67) {
             Write-Error 'Failed to get ClickOnceApplication'
-            Write-Host 'Exiting script...'
-            exit
+            throw 'Failed to get ClickOnceApplication'
         }
     }
     while ((-not (Test-Path -Path $Default_Path -PathType Container)) -or (-not(Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse))) {
-        Write-Debug "Failed to get ClickOnceApplication, looking in "
+        Write-Debug 'Failed to get ClickOnceApplication, looking in '
         Write-ClickOnceInstructuions
     }
     $ClickOnceApp = (Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse).FullName | Where-Object { $_ -notmatch '_none_' } | Select-Object -First 1
@@ -296,7 +326,7 @@ function Get-ClickOnceApplication {
     Write-Debug "ClickOnce Application Installed - Path: $ClickOnceApp"
     $ClickOnceApp
 }
-
+# Function display console interface to run any function in the module
 function Get-PSModules {
     $REQUIRED_MODULES = @('ExchangeOnlineManagement')
     $REQUIRED_MODULES | ForEach-Object {
@@ -323,49 +353,20 @@ function Get-PSModules {
     }
     Write-Debug ' All required modules imported successfully'
 }
-
-function New-KQLQuery {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$FDate,
-        [Parameter(Mandatory = $true)]
-        [string]$Subject,
-        [Parameter(Mandatory = $false)]
-        [string]$Sender
-    )
-
-    $KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
-    if ($Sender) {
-        $KQL_QUERY_STRING += ' AND (participants:{0})' -f $Sender
+function Install-Dependencies {
+    # Function: Check PowerShell version and edition
+    # Description: This function checks the PowerShell version and edition and returns the version and edition.
+    function Test-PowerShellVersion {
+        $MIN_PS_VERSION = (7, 3)
+        if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
     }
-    $KQL_QUERY_STRING += ')'
-    return $KQL_QUERY_STRING
-}
-
-# Function: New-CustomComplianceSearch
-# Description: This function creates a new compliance search in Exchange Online for a specific mailbox, date, and subject.
-function New-CustomComplianceSearch {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$MailboxName,
-        [Parameter(Mandatory = $true)]
-        [string]$SearchName,
-        [Parameter(Mandatory = $true)]
-        [string]$Subject,
-        [Parameter(Mandatory = $false)]
-        [string]$FDate,
-        [Parameter(Mandatory = $false)]
-        [string]$Sender
-    )
-    # New-KQLQuery -StartDate "2024-04-10" -Subject "SSG-OpsWeekly" -Sender "sumologic.com"
-    # Create a new compliance search
-    $KQL_QUERY_STRING = New-KQLQuery -FDate $FDate -Subject $Subject -Sender $Sender
-    New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
-    Write-Debug "Search created successfully - Search Name: $SearchName"
-    Start-Sleep -Seconds 5
-    Start-ComplianceSearch -Identity $SearchName
-    Write-Debug "Search started successfully - Search Name: $SearchName"
-}
+    Write-Debug 'Installing required PS modules...'
+    Get-PSModules
+    Write-Debug 'Required modules installed successfully...'
+    Write-Debug 'Verifying/Installing Unified Export Tool...'
+    Get-ClickOnceApplication
+    Write-Debug 'ClickOnceApplication present...'
+}  
 
 # Function: New-IPPSSession
 # Description: This function creates a new Exchange Online PowerShell session.
@@ -568,6 +569,10 @@ function Save-Attachments {
         [Parameter(Mandatory = $false)]
         [string]$AttachmentExtension
     )
+    # if attachment extension is * then set it to $null
+    if ($AttachmentExtension -eq '*') {
+        $AttachmentExtension = $null
+    }
     Write-Debug "Checking folder: $($folder.Name)"
     $SEARCH_DIR_OBJECT = Get-Item -Path $SEARCH_DIR
     $SAVE_PATH = $($SEARCH_DIR_OBJECT.FullName)
@@ -594,18 +599,16 @@ function Save-Attachments {
                 }
                 else {
                     if ($AttachmentExtension) {
-                        $FILENAMEEXT = $AttachmentExtension
+                        # Remove spaces and special characters from the subject but allow - and _
+                        $Subject = $Subject -replace '[^a-zA-Z0-9-_]', ''
+                        $FILENAME = "$($Subject)-$($ReceivedDateString)$($AttachmentExtension)"
                     }
                     else {
-                        $FILENAMEEXT = $attachment.FileName.Split('.')[-1]
-                        if ($FILENAMEEXT -notmatch '^[a-zA-Z0-9]{1,4}$') {
-                            Write-Warning "Unknown file extension: $FILENAMEEXT - using anyway"
-                        }
+                        $FILENAME = "$($ReceivedDateString)-$($attachment.FileName)"
                     }
-                    $FILENAME = "$($Subject)-$($ReceivedDateString)$($FILENAMEEXT)"
                     $i = 1
                     while (Test-Path "$SAVE_PATH\$FILENAME") {
-                        $FILENAME = "$Subject-$ReceivedDateString-$i$FILENAMEEXT"
+                        $FILENAME = "Copy$i-$FILENAME"
                         $i++
                     }
                     Write-Debug '**********************************************************'

@@ -21,7 +21,63 @@
 
 #>
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
-# Function display console interface to run any function in the module
+
+function Get-ClickOnceApplication {
+    $Default_Path = "$($env:LOCALAPPDATA)\Apps\2.0\"
+    $Default_Filename = 'microsoft.office.client.discovery.unifiedexporttool.exe'
+    $Default_URL = 'https://complianceclientsdf.blob.core.windows.net/v16/Microsoft.Office.Client.Discovery.UnifiedExportTool.application'
+    function Write-ClickOnceInstructuions {
+        Write-Host 'To install the Unified Export Tool manually, follow these steps:'
+        Write-Host "   - Open a browser and navigate to: $Default_URL"
+        Write-Host '   - Click on the "Install" button to download and install the application'
+        Write-Host '   - Once the installation is complete, hit "C" to continue or any other key to exit'
+        $Key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown').VirtualKeyCode
+        if ($Key -ne 67) {
+            Write-Error 'Failed to get ClickOnceApplication'
+            throw 'Failed to get ClickOnceApplication'
+        }
+    }
+    while ((-not (Test-Path -Path $Default_Path -PathType Container)) -or (-not(Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse))) {
+        Write-Debug 'Failed to get ClickOnceApplication, looking in '
+        Write-ClickOnceInstructuions
+    }
+    $ClickOnceApp = (Get-ChildItem -Path $Default_Path -Filter $Default_Filename -Recurse).FullName | Where-Object { $_ -notmatch '_none_' } | Select-Object -First 1
+    while (!$ClickOnceApp) {
+        Write-Debug 'Failed to get ClickOnceApplication, try manual install see:'
+        Write-ClickOnceInstructuions
+    }
+    Write-Debug "ClickOnce Application Installed - Path: $ClickOnceApp"
+    $ClickOnceApp
+}
+
+
+# Function: Install-Dependencies
+# Description: This function installs the required modules and dependencies for the script to run.
+function Install-Dependencies {
+    Write-Host 'Not implemented yet'
+}  
+
+# function to run provided functions with provided parameters (as hash table)
+function Invoke-M365PowerKitFunction {
+    param (
+        [string]$FunctionName,
+        [hashtable]$Parameters
+    )
+    try {
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        # Invoke expression to run the function, splatting the parameters
+        $stopwatch.Start()
+        Write-Debug "Running function: $FunctionName"
+        Write-Debug "Parameters: $($Parameters | Out-String)"
+        & $FunctionName @Parameters
+        $stopwatch.Stop()
+        Write-Debug "Function: $FunctionName completed in $($stopwatch.Elapsed.TotalSeconds) seconds"
+    }
+    catch {
+        Write-Error "Failed to run function: $FunctionName"
+    }
+}
+
 function Show-M365PowerKitFunctions {
     # List nested modules and their exported functions to the console in a readable format, grouped by module
     $colors = @('Green', 'Cyan', 'Red', 'Magenta', 'Yellow')
@@ -66,43 +122,46 @@ function Show-M365PowerKitFunctions {
     Write-Host "`n" -BackgroundColor Black
     Write-Host '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++' -BackgroundColor Black -ForegroundColor DarkGray
     # Ask the user which function they want to run
-    $selectedFunction = Read-Host -Prompt "`nSelect a function to run (or hit enter to exit):"
-    # Attempt to convert the input string to a char
-    try {
-        $selectedFunction = [int]$selectedFunction
-    }
-    catch {
-        if (!$selectedFunction) {
-            return $true
+    $selectedFunction = Read-Host -Prompt "`nSelect a function to run by ID, or FunctionName [parameters] (or hit enter to exit):"
+    # if the user enters a function name, run it with the provided parameters as a hash table
+    if ($selectedFunction -match '(\w+)\s*\[(.*)\]') {
+        $functionName = $matches[1]
+        $parameters = $matches[2] -split '\s*,\s*' | ForEach-Object {
+            $key, $value = $_ -split '\s*=\s*'
+            @{ $key = $value }
         }
-        Write-Host 'Invalid selection. Please try again.'
+        Invoke-M365PowerKitFunction -FunctionName $functionName -Parameters $parameters
+    }
+    elseif ($selectedFunction -match '(\d+)') {
+        $selectedFunction = [int]$selectedFunction
+        Invoke-M365PowerKitFunction -FunctionName $functionReferences[$selectedFunction]
+    }
+    elseif ($selectedFunction -eq '') {
+        return $null
+    }
+    else {
+        Write-Host 'Invalid selection. Please try again.' -ForegroundColor Red
         Show-M365PowerKitFunctions
     }
-    # Run the selected function timing the execution
-    Write-Host "`n"
-    Write-Host "You selected:  $($functionReferences.$selectedFunction)" -ForegroundColor Green
-    try {
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        Invoke-Expression ($functionReferences.$selectedFunction)
-        $stopwatch.Stop()
-    }
-    catch {
-        # Write all output including errors to the console from the selected function
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        throw "Error running function: $functionReferences[$selectedFunction] failed. Exiting."
-        # Exit with an error code
-        exit 1
-    }
-    finally {
-        # Ask the user if they want to run another function
-    }   if ($runAnother -eq 'Y') {
-        Get-PowerKitFunctions
+    # Ask the user if they want to run another function
+    $runAnother = Read-Host -Prompt 'Run another function? (Y / any key to exit)'
+    if ($runAnother -eq 'Y') {
+        Show-M365PowerKitFunctions
     }
     else {
         Write-Host 'Have a great day!'
-        return $true
+        return $null
     }
 }
+
 function Use-M365PowerKit {
-    Show-M365PowerKitFunctions
+    param (
+        [switch]$InstallDependencies = $false
+    )
+    if ($InstallDependencies) {
+        Install-Dependencies
+    }
+    else {
+        Show-M365PowerKitFunctions
+    }
 }
