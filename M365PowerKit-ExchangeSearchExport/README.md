@@ -1,8 +1,8 @@
-# Get-M365ExchangeAttachmentsBySearch
+# M365PowerKit-ExchangeSearchExport
 
 This PowerShell module provides 2 main functions:
 
-- `Get-M365ExchangeAttachmentsBySearch` allows you to search for and retrieve attachments from Microsoft 365 Exchange mailboxes using a search query based on sent date, sender and subject and attachment name (check psm1 file for more details).
+- `M365PowerKit-ExchangeSearchExport` allows you to search for and retrieve attachments from Microsoft 365 Exchange mailboxes using a search query based on sent date, sender and subject and attachment name (check psm1 file for more details).
 
 - `Get-M365ExchangeAttachmentsFromSearch` allows you export a previously comp.
 
@@ -15,8 +15,8 @@ This PowerShell module provides 2 main functions:
 - MS Outlook 2016 or later installed on the machine running the script
 
 ```powershell
-   git clone https://github.com/markz0r/Get-M365ExchangeAttachmentsBySearch.git
-   cd .\Get-M365ExchangeAttachmentsBySearch; Import-Module ".\Get-M365ExchangeAttachmentsBySearch.psd1" -Force
+   git clone https://github.com/markz0r/M365PowerKit-ExchangeSearchExport.git
+   cd .\M365PowerKit-ExchangeSearchExport; Import-Module ".\M365PowerKit-ExchangeSearchExport.psd1" -Force
    # To attempt automated installation of dependencies (possibly requires admin rights... but don't think so)
     Get-M365ExchangeAttachments -InstallDepsOnly
 ```
@@ -27,7 +27,7 @@ This PowerShell module provides 2 main functions:
 ### Create a new search query and retrieve attachments
 
 ```powershell
-  Get-M365ExchangeAttachmentsBySearch -MailboxName "user@example.com" -UPN "admin@example.com" -StartDate "2024-04-20" -Subject "Important Policy Docs" -Sender "importantsenderdomainoraddress.com" -AttachmentExtension "pdf"
+  M365PowerKit-ExchangeSearchExport -MailboxName "user@example.com" -UPN "admin@example.com" -StartDate "2024-04-20" -Subject "Important Policy Docs" -Sender "importantsenderdomainoraddress.com" -AttachmentExtension "pdf"
 ```
 
 ### Retrieve attachments for an existing search query

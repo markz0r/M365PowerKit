@@ -1,7 +1,7 @@
 # Ignore all files and directories except for *.psd1, *.psm1 README.md, LICENSE, and .gitignore
 *
-!*.psd1
-!*.psm1
+!M365PowerKit-ExchangeSearchExport/M365PowerKit-ExchangeSearchExport.psd1
+!M365PowerKit-ExchangeSearchExport/M365PowerKit-ExchangeSearchExport.psm1
 !README.md
 !LICENSE
 !.gitignore
