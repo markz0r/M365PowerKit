@@ -598,7 +598,7 @@ function Save-Attachments {
                     Write-Debug "Skipping attachment with extension: $($attachment.FileName), it does not match the provided extension filter: $AttachmentExtension"
                 }
                 else {
-                    if ($AttachmentExtension) {
+                    if ($AttachmentExtension -and $AttachmentExtension.Length -gt 1) {
                         # Remove spaces and special characters from the subject but allow - and _
                         $Subject = $Subject -replace '[^a-zA-Z0-9-_]', ''
                         $FILENAME = "$($Subject)-$($ReceivedDateString)$($AttachmentExtension)"
