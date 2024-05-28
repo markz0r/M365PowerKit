@@ -97,7 +97,9 @@ function Export-NewExchangeSearch {
         [Parameter(Mandatory = $false)]
         [switch]$SkipConnIPS = $false,
         [Parameter(Mandatory = $false)]
-        [switch]$SkipDownload = $false
+        [switch]$SkipDownload = $false,
+        [Parameter(Mandatory = $false)]
+        [switch]$UseAttachmentFileName = $false
     )
     # Read user input for required parameters if not provided
     if (-not $UPN) {
@@ -163,7 +165,7 @@ function Export-NewExchangeSearch {
     Write-Debug '--------------------------------------------------'
     New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
     Wait-CustomComplianceSearch -SearchName $SearchName
-    Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+    Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName $UseAttachmentFileName
 }
 
 # Function: Export-ExistingExchangeSearch
@@ -182,6 +184,8 @@ function Export-ExistingExchangeSearch {
         [switch]$SkipConnIPS = $false,
         [Parameter(Mandatory = $false)]
         [switch]$SkipDownload = $false,
+        [Parameter(Mandatory = $false)]
+        [switch]$UseAttachmentFileName = $false,
         [Parameter(Mandatory = $false)]
         [string]$BASE_DIR = 'PSTExports'
     )
@@ -242,7 +246,7 @@ function Export-ExistingExchangeSearch {
     Write-Debug 'Saving attachments...'
     Get-ChildItem -Path "$SEARCH_DIR" -Filter '*.pst' -Recurse -ErrorAction Ignore | ForEach-Object {
         Write-Debug "Processing PST file: $($_.Name)"
-        Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR"
+        Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR" -UseAttachmentFileName $UseAttachmentFileName
     }
     Write-Debug 'Attachments saved successfully...'
     Write-Debug 'Closing the Outlook COM object...'
@@ -567,7 +571,9 @@ function Save-Attachments {
         [Parameter(Mandatory = $true)]
         [string]$SEARCH_DIR,
         [Parameter(Mandatory = $false)]
-        [string]$AttachmentExtension
+        [string]$AttachmentExtension,
+        [Parameter(Mandatory = $false)]
+        [switch]$UseAttachmentFileName = $false
     )
     # if attachment extension is * then set it to $null
     if ($AttachmentExtension -eq '*') {
@@ -598,12 +604,14 @@ function Save-Attachments {
                     Write-Debug "Skipping attachment with extension: $($attachment.FileName), it does not match the provided extension filter: $AttachmentExtension"
                 }
                 else {
-                    if ($AttachmentExtension -and $AttachmentExtension.Length -gt 1) {
+                    if ($UseSubjectForFileName -or ($AttachmentExtension -and $AttachmentExtension.Length -gt 1)) {
                         # Remove spaces and special characters from the subject but allow - and _
+                        Write-Debug 'Attatchment extension defined, removing spaces and special characters from the subject and adding to the filename...'
                         $Subject = $Subject -replace '[^a-zA-Z0-9-_]', ''
                         $FILENAME = "$($Subject)-$($ReceivedDateString)$($AttachmentExtension)"
                     }
                     else {
+                        Write-Debug 'Attatchment extension not defined, using the attachment filename...'
                         $FILENAME = "$($ReceivedDateString)-$($attachment.FileName)"
                     }
                     $i = 1
@@ -683,7 +691,9 @@ function Get-AttachmentsFromPST {
         [Parameter(Mandatory = $false)]
         [string]$AttachmentExtension,
         [Parameter(Mandatory = $true)]
-        [string]$SEARCH_DIR
+        [string]$SEARCH_DIR,
+        [Parameter(Mandatory = $false)]
+        [switch]$UseAttachmentFileName = $false
     )
     $PST_FILE_OBJECT = Get-Item -Path "$SEARCH_DIR\$PSTFile"
     if (-not $PST_FILE_OBJECT) {
@@ -744,7 +754,7 @@ function Get-AttachmentsFromPST {
     Write-Debug "rootFolder = pstStore.GetRootFolder() succeeded... for $($pstStore.Name) in $PSTFile"
     try {
         Write-Debug "START --- SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
-        Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension
+        Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension -UseSubjectForFileName $UseSubjectForFileName
         Write-Debug "END ----SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
     }
     catch {
