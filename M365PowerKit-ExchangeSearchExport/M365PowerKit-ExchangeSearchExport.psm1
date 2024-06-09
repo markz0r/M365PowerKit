@@ -242,11 +242,24 @@ function Export-ExistingExchangeSearch {
     }
     Write-Debug 'Getting Outlook COM object...'
     $outlook = Get-OutlookObject
+    # Wait for the Outlook COM object to be ready
+    while (-not $outlook) {
+        Write-Debug 'Outlook COM object not ready, sleeping for 5 seconds...'
+        Start-Sleep -Seconds 5
+        $outlook = Get-OutlookObject
+    }
     Write-Debug 'Outlook COM object obtained successfully...'
     Write-Debug 'Saving attachments...'
     Get-ChildItem -Path "$SEARCH_DIR" -Filter '*.pst' -Recurse -ErrorAction Ignore | ForEach-Object {
         Write-Debug "Processing PST file: $($_.Name)"
-        Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR" -UseAttachmentFileName $UseAttachmentFileName
+        # if UseAttachmentFileName is set, use the attachment file name instead of the email subject
+        if ($UseAttachmentFileName) {
+            Write-Debug 'Using attachment file name instead of email subject...'
+            Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR" -UseAttachmentFileName
+        } 
+        else {
+            Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR"
+        }
     }
     Write-Debug 'Attachments saved successfully...'
     Write-Debug 'Closing the Outlook COM object...'
@@ -550,6 +563,7 @@ function Export-CustomComplianceSearchResults {
         Invoke-ComplianceSearchExportDownload -SearchName $SearchName -SEARCH_DIR $SEARCH_DIR -DOWNLOAD_URL $($DOWNLOAD_DETAILS.CONTAINER_URL) -EXPORT_SAS_TOKEN $($DOWNLOAD_DETAILS.SAS_TOKEN) -ClickOnceApplicationExecutable $ClickOnceApplicationExecutable
     } 
     catch {
+        Write-Debug ($_ | Format-List * | Out-String)
         throw "Invoke-ComplianceSearchExportDownload -SearchName $SearchName -SEARCH_DIR $SEARCH_DIR -DOWNLOAD_URL $($DOWNLOAD_DETAILS.CONTAINER_URL) -EXPORT_SAS_TOKEN $($DOWNLOAD_DETAILS.SAS_TOKEN) -ClickOnceApplicationExecutable $ClickOnceApplicationExecutable)"
     }
     # Write to the console that the export was successful and print the full (absolute) path to the PST file
@@ -604,15 +618,15 @@ function Save-Attachments {
                     Write-Debug "Skipping attachment with extension: $($attachment.FileName), it does not match the provided extension filter: $AttachmentExtension"
                 }
                 else {
-                    if ($UseSubjectForFileName -or ($AttachmentExtension -and $AttachmentExtension.Length -gt 1)) {
+                    if ($UseAttachmentFileName) {
                         # Remove spaces and special characters from the subject but allow - and _
-                        Write-Debug 'Attatchment extension defined, removing spaces and special characters from the subject and adding to the filename...'
-                        $Subject = $Subject -replace '[^a-zA-Z0-9-_]', ''
-                        $FILENAME = "$($Subject)-$($ReceivedDateString)$($AttachmentExtension)"
+                        Write-Debug 'UseAttachmentFileName, just using the attachment filename with received date...'
+                        $FILENAME = "$($ReceivedDateString)-$($attachment.FileName)"
                     }
                     else {
-                        Write-Debug 'Attatchment extension not defined, using the attachment filename...'
-                        $FILENAME = "$($ReceivedDateString)-$($attachment.FileName)"
+                        Write-Debug 'Attatchment extension defined, removing spaces and special characters from the subject and adding to the filename...'
+                        $Subject = $Subject -replace '[^a-zA-Z0-9-_]', ''
+                        $FILENAME = "$($ReceivedDateString)-$($Subject)$($attachment.FileName.Substring($attachment.FileName.LastIndexOf('.')))"
                     }
                     $i = 1
                     while (Test-Path "$SAVE_PATH\$FILENAME") {
@@ -754,7 +768,13 @@ function Get-AttachmentsFromPST {
     Write-Debug "rootFolder = pstStore.GetRootFolder() succeeded... for $($pstStore.Name) in $PSTFile"
     try {
         Write-Debug "START --- SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
-        Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension -UseSubjectForFileName $UseSubjectForFileName
+        if ($UseAttachmentFileName) {
+            Write-Debug 'UseAttachmentFileName is set, using the attachment file name instead of the email subject...'
+            Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension -UseAttachmentFileName
+        }
+        else {
+            Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension
+        }
         Write-Debug "END ----SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
     }
     catch {
