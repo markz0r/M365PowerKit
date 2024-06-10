@@ -165,7 +165,12 @@ function Export-NewExchangeSearch {
     Write-Debug '--------------------------------------------------'
     New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
     Wait-CustomComplianceSearch -SearchName $SearchName
-    Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName $UseAttachmentFileName
+    if ($UseAttachmentFileName) {
+        Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
+    }
+    else {
+        Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+    }
 }
 
 # Function: Export-ExistingExchangeSearch
