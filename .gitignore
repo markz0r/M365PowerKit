@@ -10,3 +10,6 @@
 !.gitignore
 !.gitattributes
 !LICENSE.md
+
+# Seems broken... ended up manually overriding the .gitignore file with:
+# Get-ChildItem -Recurse -Include *.psd1, *.psm1 | ForEach-Object { git add $_ -f }
