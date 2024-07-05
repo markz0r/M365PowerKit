@@ -3,6 +3,8 @@
 # all files in all directories with psm1 extension
 !**/*.psd1
 !**/*.psm1
+!*M365PowerKit-ExchangeContactImporterForOrg/*.psd1
+!*M365PowerKit-ExchangeReporter/*.psm1
 !README.md
 !LICENSE
 !.gitignore
