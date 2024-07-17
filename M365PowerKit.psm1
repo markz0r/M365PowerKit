@@ -54,7 +54,33 @@ function Get-ClickOnceApplication {
 # Function: Install-Dependencies
 # Description: This function installs the required modules and dependencies for the script to run.
 function Install-Dependencies {
-    Write-Host 'Not implemented yet'
+    function Get-PSModules {
+        $REQUIRED_MODULES = @('ExchangeOnlineManagement')
+        $REQUIRED_MODULES | ForEach-Object {
+            if (-not (Get-InstalledModule -Name $_)) {
+                try {
+                    Install-Module -Name $_
+                    Write-Debug "$_ module installed successfully"
+                }
+                catch {
+                    Write-Error "Failed to install $_ module"
+                }
+            }
+            else {
+                Write-Debug "$_ module already installed"
+            }
+            try {
+                Import-Module -Name $_
+                Write-Debug "Loading the $_ module..."
+                Write-Debug "$_ module loaded successfully"
+            }
+            catch {
+                Write-Error "Failed to import $_ module"
+            }
+        }
+        Write-Debug ' All required modules imported successfully'
+    }
+    Get-PSModules
 }
 
 function Import-NestedModules {
@@ -85,7 +111,7 @@ function Invoke-M365PowerKitFunction {
         [Parameter(Mandatory = $true)]
         [string]$FunctionName,
         [Parameter(Mandatory = $true)]
-        [hashtable]$Parameters,
+        [hashtable]$Parameters = @{},
         [Parameter(Mandatory = $false)]
         [switch]$SkipNestedModuleImport
 
@@ -98,7 +124,12 @@ function Invoke-M365PowerKitFunction {
         $stopwatch.Start()
         Write-Debug "Running function: $FunctionName"
         Write-Debug "Parameters: $($Parameters | Out-String)"
-        & $FunctionName @Parameters
+        if ($Parameters) {
+            Invoke-Expression "$FunctionName @Parameters"
+        }
+        else {
+            Invoke-Expression $FunctionName
+        }
         $stopwatch.Stop()
         Write-Debug "Function: $FunctionName completed in $($stopwatch.Elapsed.TotalSeconds) seconds"
     }
@@ -184,15 +215,36 @@ function Show-M365PowerKitFunctions {
         return $null
     }
 }
+# Function: New-IPPSSession
+# Description: This function creates a new Exchange Online PowerShell session.
+function New-IPPSSession {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$UPN
+    )
+    try {
+        Write-Debug 'Starting New-IPPSSession...'
+        Connect-IPPSSession -UserPrincipalName $UPN
+        Write-Debug 'IPS session created successfully'
+    }
+    catch {
+        Write-Debug 'Failed to create Exchange Online PowerShell session, see:'
+        Write-Debug '   - https://learn.microsoft.com/en-us/powershell/exchange/connect-to-scc-powershell?view=exchange-ps'
+        Write-Error 'Failed establish IPS session'
+    }
+}
 
 function Use-M365PowerKit {
     param (
         [Parameter(Mandatory = $false)]
-        [switch]$InstallDependencies = $false
+        [switch]$SkipDependencies = $false,
+        [Parameter(Mandatory = $true)]
+        [string]$UPN
     )
     Import-NestedModules
-    if ($InstallDependencies) {
+    if (!$SkipDependencies) {
         Install-Dependencies
     }
+    New-IPPSSession -UPN $UPN
     Show-M365PowerKitFunctions
 }

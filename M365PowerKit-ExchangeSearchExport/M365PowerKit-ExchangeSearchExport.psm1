@@ -91,6 +91,8 @@ function Export-NewExchangeSearch {
         [Parameter(Mandatory = $false)]
         [string]$StartDate,
         [Parameter(Mandatory = $false)]
+        [string]$DaysBack,
+        [Parameter(Mandatory = $false)]
         [string]$Sender_Address,
         [Parameter(Mandatory = $false)]
         [string]$AttachmentExtension,
@@ -106,6 +108,7 @@ function Export-NewExchangeSearch {
         [switch]$UseAttachmentFileName = $false
     )
     Start-Transcript -Append $TranscriptPath
+    $SEARCH_PARAMS = @{}
     try {
         # Read user input for required parameters if not provided
         if (-not $UPN) {
@@ -114,15 +117,9 @@ function Export-NewExchangeSearch {
         if (-not $MailboxName) {
             $MailboxName = Read-Host 'Enter the mailbox name of the user whose email attachments you want to retrieve (e.g.: user@onmicrosoft.com) [required]'
         }
-        if (-not $StartDate) {
-            $StartDate = Read-Host 'Enter the start date for the search (e.g.: 2024-01-01) [required]'
-        }
         if (-not $Subject) {
             # $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
-            Write-Debug '-Subject parameter not provided excluding from filter...'
-        }
-        # if subject is blank, set it to a wildcard
-        if (-not $Subject) {
+            Write-Debug '-Subject parameter not provided using wildcard...'
             $Subject = '*'
         }
         if (-not $Sender_Address) {
@@ -136,9 +133,9 @@ function Export-NewExchangeSearch {
             $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
         }
         # If either or both of the StartDate and Subject parameters are not provided, advise user and ask if they want to continue anyway
-        if (-not $StartDate -or -not $Sender_Address) {
+        if ((-not ($StartDate -or $DaysBack)) -or -not $Sender_Address) {
             # Provide red warning message to the user the parameters were not provide and this query may take a long time and create a large amount of data, make the text red
-            Write-Debug 'Warning: You have not provided the StartDate and/or Sender parameters. This query may take a long time and create a large amount of data.' -ForegroundColor Red
+            Write-Debug 'Warning: You have not provided the StartDate and/or Sender parameters. This query may take a long time and create a large amount of data.'
             $Continue = Read-Host 'Do you want to continue anyway? (Y/N)'
             if ($Continue -ne 'Y') {
                 Write-Debug "You can provide these parameters as follows: -StartDate 'yyyy-MM-dd' -Sender 'sumologic.com'"
@@ -150,10 +147,8 @@ function Export-NewExchangeSearch {
                 Write-Debug 'Continuing without StartDate and/or Sender parameters...'
             }
         }
-        else {
-            if ($StartDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
-                Write-Error "StartDate: $StartDate - does not match the format yyyy-MM-dd."
-            }
+        if (-not $SkipConnIPS) {
+            New-IPPSSession -UPN $UPN
         }
         if ($AttachmentExtension -and $AttachmentExtension -notmatch '^\..*') {
             Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
@@ -162,21 +157,45 @@ function Export-NewExchangeSearch {
         elseif ($AttachmentExtension -eq '') {
             $AttachmentExtension = '*'
         }
-        if (-not $SkipConnIPS) {
-            New-IPPSSession -UPN $UPN
-        }
-        $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
+        if ($StartDate) {
+            if ($StartDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
+                Write-Error "StartDate: $StartDate - does not match the format yyyy-MM-dd."
+            } 
+            Write-Debug "StartDate: $StartDate - matches the format yyyy-MM-dd."
+            # Create parameter hashtable for the compliance search
+            $SEARCH_PARAMS = @{
+                MailboxName         = $MailboxName
+                Subject             = $Subject
+                FDate               = $StartDate
+                Sender_Address      = $Sender_Address
+                SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-$MailboxName-Export-Job"
+            }
+        } elseif ($DaysBack) {
+            if ($DaysBack -notmatch '^\d+$') {
+                Write-Error "DaysBack: $DaysBack - does not match the format d+."
+            } 
+            Write-Debug "DaysBack: $DaysBack - matches the format d+."
+            # Create parameter hashtable for the compliance search
+            $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
+            $SEARCH_PARAMS = @{
+                MailboxName         = $MailboxName
+                Subject             = $Subject
+                DaysBack            = $DaysBack
+                Sender_Address      = $Sender_Address
+                SearchName =  "DaysBack-$DaysBack-$MailboxName-Export-Job"
+            }
+        }        
         Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
-        Write-Debug '--------------------------------------------------'
-        Write-Debug "Search Name: $SearchName"
-        Write-Debug '--------------------------------------------------'
-        New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
-        Wait-CustomComplianceSearch -SearchName $SearchName
+        $StartedSearchName = New-CustomComplianceSearch @SEARCH_PARAMS
+        Write-Debug "Search created/started successfully - Search Name: $StartedSearchName"
+        # Sleep for 20 seconds to allow the search to start
+        Start-Sleep -Seconds 20
+        Wait-CustomComplianceSearch -SearchName $StartedSearchName
         if ($UseAttachmentFileName) {
-            Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
+            Export-ExistingExchangeSearch -UPN $UPN -SearchName $StartedSearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
         }
         else {
-            Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+            Export-ExistingExchangeSearch -UPN $UPN -SearchName $StartedSearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
         }
     } catch {
         Write-Error $_
@@ -293,19 +312,33 @@ function Export-ExistingExchangeSearch {
 
 function New-KQLQuery {
     param (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$FDate,
+        [Parameter(Mandatory = $false)]
+        [string]$DaysBack = "2",
         [Parameter(Mandatory = $true)]
         [string]$Subject,
         [Parameter(Mandatory = $false)]
         [string]$Sender_Address
     )
-
-    $KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
+    $KQL_QUERY_STRING = ''
+    if ($FDate -and $FDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
+        Write-Error "FDate: $FDate - does not match the format yyyy-MM-dd."
+    } elseif ($FDate -and $FDate -match '^\d{4}-\d{2}-\d{2}$') {
+        $KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
+    } elseif (!$DaysBack) {
+        Write-Error  "Either FDate or DaysBack is required..."
+    } elseif ($DaysBack -and $DaysBack -notmatch '^\d+$') {
+        Write-Error "DaysBack: $DaysBack - does not match the format d+."
+    } else {
+        $KQL_QUERY_STRING = '((received>=ago({0}d)) AND (subject:"{1}")' -f $DaysBack, $Subject
+    }
+    #$KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
     if ($Sender_Address) {
         $KQL_QUERY_STRING += ' AND (participants:{0})' -f $Sender_Address
     }
     $KQL_QUERY_STRING += ')'
+    Write-Debug "KQL Query String built: $KQL_QUERY_STRING"
     return $KQL_QUERY_STRING
 }
 
@@ -322,17 +355,69 @@ function New-CustomComplianceSearch {
         [Parameter(Mandatory = $false)]
         [string]$FDate,
         [Parameter(Mandatory = $false)]
+        [string]$DaysBack,
+        [Parameter(Mandatory = $false)]
         [string]$Sender_Address
     )
     # New-KQLQuery -StartDate "2024-04-10" -Subject "SSG-OpsWeekly" -Sender "sumologic.com"
     # Create a new compliance search
-    $KQL_QUERY_STRING = New-KQLQuery -FDate $FDate -Subject $Subject -Sender $Sender_Address
-    New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
-    Write-Debug "Search created successfully - Search Name: $SearchName"
-    Start-Sleep -Seconds 5
-    Start-ComplianceSearch -Identity $SearchName
-    Write-Debug "Search started successfully - Search Name: $SearchName"
+    $STARTED_SEARCH = ''
+    $KQL_QUERY_STRING = ''
+    if ($FDate -and $DaysBack) {
+        Write-Error 'Please provide either -FDate or -DaysBack, not both...'
+    } elseif (-not $FDate -and -not $DaysBack) {
+        Write-Debug "Neither -FDate nor -DaysBack provided, using default of 2 days back..."
+        $KQL_QUERY_STRING = New-KQLQuery -Subject $Subject -Sender $Sender_Address
+    } elseif ($FDate) {
+        $KQL_QUERY_STRING = New-KQLQuery -FDate $FDate -Subject $Subject -Sender $Sender_Address
+    } elseif ($DaysBack) {
+        $KQL_QUERY_STRING = New-KQLQuery -DaysBack $DaysBack -Subject $Subject -Sender $Sender_Address
+    }
+    # Check if there is an existing Compliance Search with the same KQL Query
+    $ExistingSearch = Get-ComplianceSearch | Where-Object { $_.ContentMatchQuery -eq $KQL_QUERY_STRING }
+    if ($ExistingSearch) {
+        Write-Debug "Compliance Search already exists with the same KQL Query - Search Name: $($ExistingSearch.Name)"
+        Write-Debug "Skipping creating a new search...and running the existing search..."
+        Start-ComplianceSearch -Identity $ExistingSearch.Name
+        $STARTED_SEARCH = "$($ExistingSearch.Name)"
+    } else {
+        Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $FDate, subject: $Subject, sender: $Sender_Address..."
+        New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
+        Write-Debug "Search created successfully - Search Name: $SearchName"
+        Start-Sleep -Seconds 5
+        Start-ComplianceSearch -Identity $SearchName
+        Write-Debug "Search started successfully - Search Name: $SearchName"
+        #Write-Debug "KQL Query String: $KQL_QUERY_STRING"
+        $STARTED_SEARCH = "$SearchName"
+    }
+    return $STARTED_SEARCH
 }
+
+function List-ContentSearches {
+    # Check if there is an existing session else New-IPPSSession -UPN $UPN
+    Get-ComplianceSearch | Select-Object -Property Identity, Status, ExchangeLocation, ContentMatchQuery, CreatedTime, LastModifiedTime
+}
+
+function Remove-ContentSearch {
+    param (
+        [Parameter(Mandatory = $false)]
+        [string]$SearchName,
+        [Parameter(Mandatory = $false)]
+        [switch]$ClearAll
+    )
+    if ($ClearAll) {
+        Get-ComplianceSearch | ForEach-Object {
+            Remove-ComplianceSearch -Identity $_.Identity -Confirm:$false
+        }
+    }
+    elseif ($SearchName) {
+        Remove-ComplianceSearch -Identity $SearchName -Confirm:$false
+    }
+    else {
+        Write-Error 'Please provide a -SearchName or use -ClearAll to remove all searches...'
+    }
+}
+
 function Get-ClickOnceApplication {
     $Default_Path = "$($env:LOCALAPPDATA)\Apps\2.0\"
     $Default_Filename = 'microsoft.office.client.discovery.unifiedexporttool.exe'
@@ -402,24 +487,7 @@ function Install-Dependencies {
     Write-Debug 'ClickOnceApplication present...'
 }  
 
-# Function: New-IPPSSession
-# Description: This function creates a new Exchange Online PowerShell session.
-function New-IPPSSession {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
-    )
-    try {
-        Write-Debug 'Starting New-IPPSSession...'
-        Connect-IPPSSession -UserPrincipalName $UPN
-        Write-Debug 'IPS session created successfully'
-    }
-    catch {
-        Write-Debug 'Failed to create Exchange Online PowerShell session, see:'
-        Write-Debug '   - https://learn.microsoft.com/en-us/powershell/exchange/connect-to-scc-powershell?view=exchange-ps'
-        Write-Error 'Failed establish IPS session'
-    }
-}
+
 
 # Function: Wait-CustomComplianceSearch
 # Description: This function waits for the compliance search to complete.
