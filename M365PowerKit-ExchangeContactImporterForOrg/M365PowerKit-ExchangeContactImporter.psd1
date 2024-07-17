@@ -51,10 +51,10 @@
     # ProcessorArchitecture = ''
     
     # Modules that must be imported into the global environment prior to importing this module
-    RequiredModules   = @('.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1')
+    # RequiredModules   = @('.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1')
         
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
-    NestedModules     = @('.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1')
+    # NestedModules     = @('.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1')
     # Assemblies that must be loaded prior to importing this module
     # RequiredAssemblies = @()
         

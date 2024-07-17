@@ -73,6 +73,10 @@ GitHub: https://github.com/markz0r/M365PowerKit-ExchangeSearchExport
 #>
 
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
+# Start transcript logging
+$TranscriptPath = "$PSScriptRoot\Trans\$(Get-Date -Format 'yyyyMMdd_hhmmss')-Transcript.log"
+
+
 # On any error, stop the script
 # Function: Get-M365ExchangeAttachments
 # Description: This is the main function that calls the other functions. It takes a user principal name (UPN), mailbox name, start date, and subject as parameters.
@@ -101,75 +105,83 @@ function Export-NewExchangeSearch {
         [Parameter(Mandatory = $false)]
         [switch]$UseAttachmentFileName = $false
     )
-    # Read user input for required parameters if not provided
-    if (-not $UPN) {
-        $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
-    }
-    if (-not $MailboxName) {
-        $MailboxName = Read-Host 'Enter the mailbox name of the user whose email attachments you want to retrieve (e.g.: user@onmicrosoft.com) [required]'
-    }
-    if (-not $StartDate) {
-        $StartDate = Read-Host 'Enter the start date for the search (e.g.: 2024-01-01) [required]'
-    }
-    if (-not $Subject) {
-        $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
-    }
-    # if subject is blank, set it to a wildcard
-    if (-not $Subject) {
-        $Subject = '*'
-    }
-    if (-not $Sender_Address) {
-        $Sender_Address = Read-Host 'Enter the sender of the email attachments you want to retrieve (e.g.: sender@vendor.com) [optional, hit Enter to skip]'
-    }
-    # if sender is blank, set it to a wildcard
-    if (-not $Sender_Address) {
-        $Sender_Address = '*'
-    }
-    if (-not $AttachmentExtension) {
-        $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
-    }
-    # If either or both of the StartDate and Subject parameters are not provided, advise user and ask if they want to continue anyway
-    if (-not $StartDate -or -not $Sender_Address) {
-        # Provide red warning message to the user the parameters were not provide and this query may take a long time and create a large amount of data, make the text red
-        Write-Debug 'Warning: You have not provided the StartDate and/or Sender parameters. This query may take a long time and create a large amount of data.' -ForegroundColor Red
-        $Continue = Read-Host 'Do you want to continue anyway? (Y/N)'
-        if ($Continue -ne 'Y') {
-            Write-Debug "You can provide these parameters as follows: -StartDate 'yyyy-MM-dd' -Sender 'sumologic.com'"
-            Write-Debug "A full example would be: Get-M365ExchangeAttachments -UPN test@test.com -MailboxName billy@test.com -StartDate '2022-01-01' -Subject 'Important Documents' -Sender 'sumologic.com' -AttachmentExtension '.pdf'"
-            Write-Debug 'Exiting script...'
-            exit
+    Start-Transcript -Append $TranscriptPath
+    try {
+        # Read user input for required parameters if not provided
+        if (-not $UPN) {
+            $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
+        }
+        if (-not $MailboxName) {
+            $MailboxName = Read-Host 'Enter the mailbox name of the user whose email attachments you want to retrieve (e.g.: user@onmicrosoft.com) [required]'
+        }
+        if (-not $StartDate) {
+            $StartDate = Read-Host 'Enter the start date for the search (e.g.: 2024-01-01) [required]'
+        }
+        if (-not $Subject) {
+            # $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
+            Write-Debug '-Subject parameter not provided excluding from filter...'
+        }
+        # if subject is blank, set it to a wildcard
+        if (-not $Subject) {
+            $Subject = '*'
+        }
+        if (-not $Sender_Address) {
+            $Sender_Address = Read-Host 'Enter the sender of the email attachments you want to retrieve (e.g.: sender@vendor.com) [optional, hit Enter to skip]'
+        }
+        # if sender is blank, set it to a wildcard
+        if (-not $Sender_Address) {
+            $Sender_Address = '*'
+        }
+        if (-not $AttachmentExtension) {
+            $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
+        }
+        # If either or both of the StartDate and Subject parameters are not provided, advise user and ask if they want to continue anyway
+        if (-not $StartDate -or -not $Sender_Address) {
+            # Provide red warning message to the user the parameters were not provide and this query may take a long time and create a large amount of data, make the text red
+            Write-Debug 'Warning: You have not provided the StartDate and/or Sender parameters. This query may take a long time and create a large amount of data.' -ForegroundColor Red
+            $Continue = Read-Host 'Do you want to continue anyway? (Y/N)'
+            if ($Continue -ne 'Y') {
+                Write-Debug "You can provide these parameters as follows: -StartDate 'yyyy-MM-dd' -Sender 'sumologic.com'"
+                Write-Debug "A full example would be: Get-M365ExchangeAttachments -UPN test@test.com -MailboxName billy@test.com -StartDate '2022-01-01' -Subject 'Important Documents' -Sender 'sumologic.com' -AttachmentExtension '.pdf'"
+                Write-Debug 'Exiting script...'
+                exit
+            }
+            else {
+                Write-Debug 'Continuing without StartDate and/or Sender parameters...'
+            }
         }
         else {
-            Write-Debug 'Continuing without StartDate and/or Sender parameters...'
+            if ($StartDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
+                Write-Error "StartDate: $StartDate - does not match the format yyyy-MM-dd."
+            }
         }
-    }
-    else {
-        if ($StartDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
-            Write-Error "StartDate: $StartDate - does not match the format yyyy-MM-dd."
+        if ($AttachmentExtension -and $AttachmentExtension -notmatch '^\..*') {
+            Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
+            $AttachmentExtension = ".$AttachmentExtension"
         }
-    }
-    if ($AttachmentExtension -and $AttachmentExtension -notmatch '^\..*') {
-        Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
-        $AttachmentExtension = ".$AttachmentExtension"
-    }
-    elseif ($AttachmentExtension -eq '') {
-        $AttachmentExtension = '*'
-    }
-    if (-not $SkipConnIPS) {
-        New-IPPSSession -UPN $UPN
-    }
-    $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
-    Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
-    Write-Debug '--------------------------------------------------'
-    Write-Debug "Search Name: $SearchName"
-    Write-Debug '--------------------------------------------------'
-    New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
-    Wait-CustomComplianceSearch -SearchName $SearchName
-    if ($UseAttachmentFileName) {
-        Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
-    }
-    else {
-        Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+        elseif ($AttachmentExtension -eq '') {
+            $AttachmentExtension = '*'
+        }
+        if (-not $SkipConnIPS) {
+            New-IPPSSession -UPN $UPN
+        }
+        $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
+        Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
+        Write-Debug '--------------------------------------------------'
+        Write-Debug "Search Name: $SearchName"
+        Write-Debug '--------------------------------------------------'
+        New-CustomComplianceSearch -SearchName $SearchName -MailboxName $MailboxName -fDate $StartDate -subject $Subject -Sender $Sender_Address
+        Wait-CustomComplianceSearch -SearchName $SearchName
+        if ($UseAttachmentFileName) {
+            Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
+        }
+        else {
+            Export-ExistingExchangeSearch -UPN $UPN -SearchName $SearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
+        }
+    } catch {
+        Write-Error $_
+    } finally {
+        Stop-Transcript
     }
 }
 

@@ -55,14 +55,43 @@ function Get-ClickOnceApplication {
 # Description: This function installs the required modules and dependencies for the script to run.
 function Install-Dependencies {
     Write-Host 'Not implemented yet'
-}  
+}
+
+function Import-NestedModules {
+    # Location of the M365PowerKit.psm1 file
+    # Find *.psd1 files in $PSScriptRoot subdirectories and import them
+    $NESTED_MODULE_ARRAY = Get-ChildItem -Path $PSScriptRoot -Filter '*.psd1' -Recurse -Exclude 'M365PowerKit.psd1', 'M365PowerKit-SharedFunctions.psd1' | ForEach-Object {
+        # If the module is not already imported, import it
+        if (-not (Get-Module -Name $_.BaseName)) {
+            Write-Debug "Importing module: $($_.FullName)"
+            Import-Module $_.FullName -Force
+        }
+        else {
+            Write-Debug "Module already imported: $($_.FullName)"
+        }
+        # Validate that the module was imported
+        if (-not (Get-Module -Name $_.BaseName)) {
+            Write-Error "Failed to import module: $($_.FullName)"
+        }
+        return $_.BaseName
+    }
+    $NESTED_MODULE_ARRAY
+}
+
 
 # function to run provided functions with provided parameters (as hash table)
 function Invoke-M365PowerKitFunction {
     param (
+        [Parameter(Mandatory = $true)]
         [string]$FunctionName,
-        [hashtable]$Parameters
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Parameters,
+        [Parameter(Mandatory = $false)]
+        [switch]$SkipNestedModuleImport
+
     )
+    if (-not $SkipNestedModuleImport) { Import-NestedModules }
+        
     try {
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         # Invoke expression to run the function, splatting the parameters
@@ -81,22 +110,23 @@ function Invoke-M365PowerKitFunction {
 function Show-M365PowerKitFunctions {
     # List nested modules and their exported functions to the console in a readable format, grouped by module
     $colors = @('Green', 'Cyan', 'Red', 'Magenta', 'Yellow')
-    $nestedModules = Get-Module -Name M365PowerKit | Select-Object -ExpandProperty NestedModules | Where-Object Name -Match 'M365PowerKit-.*'
+    $nestedModules = Import-NestedModules
 
     $colorIndex = 0
     $functionReferences = @{}
     $nestedModules | ForEach-Object {
+        $MODULE = Get-Module -Name $_
         # Select a color from the list
         $color = $colors[$colorIndex % $colors.Count]
-        $spaces = ' ' * (52 - $_.Name.Length)
+        $spaces = ' ' * (52 - $MODULE.Name.Length)
         Write-Host '' -BackgroundColor Black
-        Write-Host "Module: $($_.Name)" -BackgroundColor $color -ForegroundColor White -NoNewline
+        Write-Host "Module: $($MODULE.Name)" -BackgroundColor $color -ForegroundColor White -NoNewline
         Write-Host $spaces  -BackgroundColor $color -NoNewline
         Write-Host ' ' -BackgroundColor Black
         $spaces = ' ' * 41
         Write-Host " Exported Commands:$spaces" -BackgroundColor "Dark$color" -ForegroundColor White -NoNewline
         Write-Host ' ' -BackgroundColor Black
-        $_.ExportedCommands.Keys | ForEach-Object {
+        $MODULE.ExportedCommands.Keys | ForEach-Object {
             # Assign a letter reference to the function
             $functRefNum = $colorIndex
             $functionReferences[$functRefNum] = $_
@@ -117,7 +147,8 @@ function Show-M365PowerKitFunctions {
         Write-Host $spaces -BackgroundColor "Dark$color" -NoNewline
         Write-Host ' ' -BackgroundColor Black
     }
-
+    Write-Host 'Note: You can run functoins without this interface by calling them directly.' 
+    Write-Host "Example: Invoke-M365PowerKitFunction -FunctionName 'FunctionName' -Parameters @{ 'ParameterName' = 'ParameterValue' }" 
     # Write separator for readability
     Write-Host "`n" -BackgroundColor Black
     Write-Host '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++' -BackgroundColor Black -ForegroundColor DarkGray
@@ -130,11 +161,11 @@ function Show-M365PowerKitFunctions {
             $key, $value = $_ -split '\s*=\s*'
             @{ $key = $value }
         }
-        Invoke-M365PowerKitFunction -FunctionName $functionName -Parameters $parameters
+        Invoke-M365PowerKitFunction -FunctionName $functionName -Parameters $parameters -SkipNestedModuleImport
     }
     elseif ($selectedFunction -match '(\d+)') {
         $selectedFunction = [int]$selectedFunction
-        Invoke-M365PowerKitFunction -FunctionName $functionReferences[$selectedFunction]
+        Invoke-M365PowerKitFunction -FunctionName $functionReferences[$selectedFunction] -SkipNestedModuleImport
     }
     elseif ($selectedFunction -eq '') {
         return $null
@@ -156,12 +187,12 @@ function Show-M365PowerKitFunctions {
 
 function Use-M365PowerKit {
     param (
+        [Parameter(Mandatory = $false)]
         [switch]$InstallDependencies = $false
     )
+    Import-NestedModules
     if ($InstallDependencies) {
         Install-Dependencies
     }
-    else {
-        Show-M365PowerKitFunctions
-    }
+    Show-M365PowerKitFunctions
 }

@@ -56,9 +56,9 @@
     )
         
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
-    NestedModules     = @(
-        '.\M365PowerKit-ExchangeSearchExport\M365PowerKit-ExchangeSearchExport.psd1'
-    )
+    # NestedModules     = @(
+    #     '.\M365PowerKit-ExchangeSearchExport\M365PowerKit-ExchangeSearchExport.psd1'
+    # )
     # Assemblies that must be loaded prior to importing this module
     # RequiredAssemblies = @()
         
