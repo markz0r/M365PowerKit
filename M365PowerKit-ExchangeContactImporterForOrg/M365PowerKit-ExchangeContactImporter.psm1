@@ -1,45 +1,6 @@
 # Set exit on error
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
 
-function Get-PSModules {
-    $REQUIRED_MODULES = @('ExchangeOnlineManagement')
-    $REQUIRED_MODULES | ForEach-Object {
-        if (-not (Get-InstalledModule -Name $_)) {
-            try {
-                Install-Module -Name $_
-                Write-Debug "$_ module installed successfully"
-            }
-            catch {
-                Write-Error "Failed to install $_ module"
-            }
-        }
-        else {
-            Write-Debug "$_ module already installed"
-        }
-        try {
-            Import-Module -Name $_
-            Write-Debug "Loading the $_ module..."
-            Write-Debug "$_ module loaded successfully"
-        }
-        catch {
-            Write-Error "Failed to import $_ module"
-        }
-    }
-    Write-Debug ' All required modules imported successfully'
-}
-
-function Install-Dependencies {
-    # Function: Check PowerShell version and edition
-    # Description: This function checks the PowerShell version and edition and returns the version and edition.
-    function Test-PowerShellVersion {
-        $MIN_PS_VERSION = (7, 3)
-        if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
-    }
-    Write-Debug 'Installing required PS modules...'
-    Get-PSModules
-} 
-
-
 # Function to import contacts from CSV file to Exchange Online given the CSV file path
 function Import-EACContactsFromCSV {
     [CmdletBinding()]
@@ -59,7 +20,7 @@ function Import-EACContactsFromCSV {
     if (-not $UPN) {
         $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
     }
-    Install-Dependencies
+    Install-SharedDependencies
     New-IPPSSession -UPN $UPN
 
     # Import contacts from CSV file

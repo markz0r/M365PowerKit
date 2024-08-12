@@ -52,7 +52,7 @@
     
     # Modules that must be imported into the global environment prior to importing this module
     RequiredModules   = @(
-        '.\M365PowerKit-ExchangeSearchExport\M365PowerKit-ExchangeSearchExport.psd1'
+        '.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1'
     )
         
     # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess

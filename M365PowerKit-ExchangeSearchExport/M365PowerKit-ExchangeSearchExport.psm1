@@ -75,6 +75,7 @@ GitHub: https://github.com/markz0r/M365PowerKit-ExchangeSearchExport
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
 # Start transcript logging
 $TranscriptPath = "$PSScriptRoot\Trans\$(Get-Date -Format 'yyyyMMdd_hhmmss')-Transcript.log"
+#Import-Module '.\M365PowerKit-SharedFunctions\M365PowerKit-SharedFunctions.psd1' -Force
 
 
 # On any error, stop the script
@@ -109,28 +110,65 @@ function Export-NewExchangeSearch {
     )
     Start-Transcript -Append $TranscriptPath
     $SEARCH_PARAMS = @{}
+    $EXPORT_PARAMS = @{
+        SkipConnIPS = $true
+        SkipModules = $true
+        BASE_DIR    = $BASE_DIR
+    }
+    try {
+        if ($SkipModules) {
+            Write-Debug 'Skipping importing the required modules...'
+        }
+        else {
+            Install-Dependencies
+        }
+    }
+    catch {
+        Write-Debug "$MyInvocation.MyCommand.Name - Failed to install dependencies..."
+        Write-Error $_
+    }
     try {
         # Read user input for required parameters if not provided
         if (-not $UPN) {
             $UPN = Read-Host 'Enter the User Principal Name (UPN) of the user running the script (e.g.: admin@onmicrosoft.com) [required]'
         }
+        $EXPORT_PARAMS.Add('UPN', $UPN)
         if (-not $MailboxName) {
-            $MailboxName = Read-Host 'Enter the mailbox name of the user whose email attachments you want to retrieve (e.g.: user@onmicrosoft.com) [required]'
+            Write-Debug 'MailboxName parameter not provided, not specifying in search...'
+            $MailboxName = "AllMailboxes"
         }
+        else {
+            $SEARCH_PARAMS.Add('MailboxName', $MailboxName)
+        }
+        # Add MailboxName to the search parameters
+        
         if (-not $Subject) {
             # $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
-            Write-Debug '-Subject parameter not provided using wildcard...'
-            $Subject = '*'
+            Write-Debug '-Subject parameter not provided, not specifying in search...'
+            $Subject = "NoFilter"
+        } 
+        else {
+            # Add Subject to the search parameters
+            $SEARCH_PARAMS.Add('Subject', $Subject)
         }
         if (-not $Sender_Address) {
-            $Sender_Address = Read-Host 'Enter the sender of the email attachments you want to retrieve (e.g.: sender@vendor.com) [optional, hit Enter to skip]'
+            Write-Debug "Sender_Address: $Sender_Address - not provided, not specifying in search..."
+            $Sender_Address = "AllSenders"
         }
-        # if sender is blank, set it to a wildcard
-        if (-not $Sender_Address) {
-            $Sender_Address = '*'
+        else {
+            # Add Sender_Address to the search parameters
+            $SEARCH_PARAMS.Add('Sender_Address', $Sender_Address)
         }
         if (-not $AttachmentExtension) {
-            $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
+            Write-Debug "AttachmentExtension: not provided, not specifying in search..."
+        }
+        else {
+            if ($AttachmentExtension -notmatch '^\..*') {
+                Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
+                $AttachmentExtension = ".$AttachmentExtension"
+            }
+            # Add AttachmentExtension to the export parameters
+            $EXPORT_PARAMS.Add('AttachmentExtension', $AttachmentExtension)
         }
         # If either or both of the StartDate and Subject parameters are not provided, advise user and ask if they want to continue anyway
         if ((-not ($StartDate -or $DaysBack)) -or -not $Sender_Address) {
@@ -150,56 +188,37 @@ function Export-NewExchangeSearch {
         if (-not $SkipConnIPS) {
             New-IPPSSession -UPN $UPN
         }
-        if ($AttachmentExtension -and $AttachmentExtension -notmatch '^\..*') {
-            Write-Debug 'AttachmentExtension does not start with a dot, adding a dot to the start'
-            $AttachmentExtension = ".$AttachmentExtension"
-        }
-        elseif ($AttachmentExtension -eq '') {
-            $AttachmentExtension = '*'
-        }
         if ($StartDate) {
             if ($StartDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
                 Write-Error "StartDate: $StartDate - does not match the format yyyy-MM-dd."
             } 
             Write-Debug "StartDate: $StartDate - matches the format yyyy-MM-dd."
-            # Create parameter hashtable for the compliance search
-            $SEARCH_PARAMS = @{
-                MailboxName         = $MailboxName
-                Subject             = $Subject
-                FDate               = $StartDate
-                Sender_Address      = $Sender_Address
-                SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-$MailboxName-Export-Job"
-            }
-        } elseif ($DaysBack) {
+            $SEARCH_PARAMS.Add('FDate', $StartDate)
+        }
+        elseif ($DaysBack) {
             if ($DaysBack -notmatch '^\d+$') {
                 Write-Error "DaysBack: $DaysBack - does not match the format d+."
             } 
             Write-Debug "DaysBack: $DaysBack - matches the format d+."
             # Create parameter hashtable for the compliance search
-            $SearchName = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
-            $SEARCH_PARAMS = @{
-                MailboxName         = $MailboxName
-                Subject             = $Subject
-                DaysBack            = $DaysBack
-                Sender_Address      = $Sender_Address
-                SearchName =  "DaysBack-$DaysBack-$MailboxName-Export-Job"
-            }
-        }        
+            $SEARCH_PARAMS.Add('DaysBack', $DaysBack)
+        }
+        $SearchName = "$(Get-Date -Format 'yyyyMMdd')-$MailboxName-$Subject-$Sender_Address-OSMSearch"
+        $SEARCH_PARAMS.Add('SearchName', $SearchName)
+        $EXPORT_PARAMS.Add('SearchName', $SearchName)
         Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
-        $StartedSearchName = New-CustomComplianceSearch @SEARCH_PARAMS
-        Write-Debug "Search created/started successfully - Search Name: $StartedSearchName"
+        $StartedSearchObject = New-CustomComplianceSearch @SEARCH_PARAMS
+        Write-Debug "Search created/started successfully - Search Name: $SearchName"
         # Sleep for 20 seconds to allow the search to start
-        Start-Sleep -Seconds 20
-        Wait-CustomComplianceSearch -SearchName $StartedSearchName
-        if ($UseAttachmentFileName) {
-            Export-ExistingExchangeSearch -UPN $UPN -SearchName $StartedSearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR" -UseAttachmentFileName
-        }
-        else {
-            Export-ExistingExchangeSearch -UPN $UPN -SearchName $StartedSearchName -SkipModules -SkipConnIPS -AttachmentExtension $AttachmentExtension -BASE_DIR "$BASE_DIR"
-        }
-    } catch {
+        Start-Sleep -Seconds 10
+        Wait-CustomComplianceSearch -SearchName $SearchName
+        $EXPORT_PARAMS.Add('UseAttachmentFileName', $UseAttachmentFileName)
+        Export-ExistingExchangeSearch @EXPORT_PARAMS
+    }
+    catch {
         Write-Error $_
-    } finally {
+    }
+    finally {
         Stop-Transcript
     }
 }
@@ -316,24 +335,33 @@ function New-KQLQuery {
         [string]$FDate,
         [Parameter(Mandatory = $false)]
         [string]$DaysBack = "2",
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$Subject,
         [Parameter(Mandatory = $false)]
         [string]$Sender_Address
     )
     $KQL_QUERY_STRING = ''
+    # Start query string with the date filter
     if ($FDate -and $FDate -notmatch '^\d{4}-\d{2}-\d{2}$') {
         Write-Error "FDate: $FDate - does not match the format yyyy-MM-dd."
-    } elseif ($FDate -and $FDate -match '^\d{4}-\d{2}-\d{2}$') {
-        $KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
-    } elseif (!$DaysBack) {
-        Write-Error  "Either FDate or DaysBack is required..."
-    } elseif ($DaysBack -and $DaysBack -notmatch '^\d+$') {
-        Write-Error "DaysBack: $DaysBack - does not match the format d+."
-    } else {
-        $KQL_QUERY_STRING = '((received>=ago({0}d)) AND (subject:"{1}")' -f $DaysBack, $Subject
     }
-    #$KQL_QUERY_STRING = '((received>={0}) AND (subject:"{1}")' -f $FDate, $Subject
+    elseif ($FDate -and $FDate -match '^\d{4}-\d{2}-\d{2}$') {
+        $KQL_QUERY_STRING = '((received>={0})' -f $FDate
+    }
+    elseif (!$DaysBack) {
+        Write-Error  "Either FDate or DaysBack is required..."
+    }
+    elseif ($DaysBack -and $DaysBack -notmatch '^\d+$') {
+        Write-Error "DaysBack: $DaysBack - does not match the format d+."
+    }
+    else {
+        $KQL_QUERY_STRING = '((received>=ago({0}d)' -f $DaysBack
+    }
+    # Add the subject filter if provided
+    if ($Subject) {
+        $KQL_QUERY_STRING += ' AND (subject:"{0}")' -f $Subject
+    }
+    # If the sender address is provided, add it to the query string
     if ($Sender_Address) {
         $KQL_QUERY_STRING += ' AND (participants:{0})' -f $Sender_Address
     }
@@ -346,11 +374,11 @@ function New-KQLQuery {
 # Description: This function creates a new compliance search in Exchange Online for a specific mailbox, date, and subject.
 function New-CustomComplianceSearch {
     param (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$MailboxName,
         [Parameter(Mandatory = $true)]
         [string]$SearchName,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$Subject,
         [Parameter(Mandatory = $false)]
         [string]$FDate,
@@ -361,18 +389,28 @@ function New-CustomComplianceSearch {
     )
     # New-KQLQuery -StartDate "2024-04-10" -Subject "SSG-OpsWeekly" -Sender "sumologic.com"
     # Create a new compliance search
+    $KQL_QUERY_PARAMS = @{}
     $STARTED_SEARCH = ''
     $KQL_QUERY_STRING = ''
     if ($FDate -and $DaysBack) {
         Write-Error 'Please provide either -FDate or -DaysBack, not both...'
-    } elseif (-not $FDate -and -not $DaysBack) {
-        Write-Debug "Neither -FDate nor -DaysBack provided, using default of 2 days back..."
-        $KQL_QUERY_STRING = New-KQLQuery -Subject $Subject -Sender $Sender_Address
-    } elseif ($FDate) {
-        $KQL_QUERY_STRING = New-KQLQuery -FDate $FDate -Subject $Subject -Sender $Sender_Address
-    } elseif ($DaysBack) {
-        $KQL_QUERY_STRING = New-KQLQuery -DaysBack $DaysBack -Subject $Subject -Sender $Sender_Address
     }
+    elseif (-not $FDate -and -not $DaysBack) {
+        Write-Debug "Neither -FDate nor -DaysBack provided, using default of 2 days back..."
+    }
+    elseif ($FDate) {
+        $KQL_QUERY_PARAMS.Add('FDate', $FDate)
+    }
+    elseif ($DaysBack) {
+        $KQL_QUERY_PARAMS.Add('DaysBack', $DaysBack)
+    }
+    if ($Subject) {
+        $KQL_QUERY_PARAMS.Add('Subject', $Subject)
+    }
+    if ($Sender_Address) {
+        $KQL_QUERY_PARAMS.Add('Sender_Address', $Sender_Address)
+    }
+    $KQL_QUERY_STRING = New-KQLQuery @KQL_QUERY_PARAMS
     # Check if there is an existing Compliance Search with the same KQL Query
     $ExistingSearch = Get-ComplianceSearch | Where-Object { $_.ContentMatchQuery -eq $KQL_QUERY_STRING }
     if ($ExistingSearch) {
@@ -380,8 +418,9 @@ function New-CustomComplianceSearch {
         Write-Debug "Skipping creating a new search...and running the existing search..."
         Start-ComplianceSearch -Identity $ExistingSearch.Name
         $STARTED_SEARCH = "$($ExistingSearch.Name)"
-    } else {
-        Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $FDate, subject: $Subject, sender: $Sender_Address..."
+    }
+    else {
+        Write-Debug "Creating a new compliance search for with the following parameters:"
         New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
         Write-Debug "Search created successfully - Search Name: $SearchName"
         Start-Sleep -Seconds 5
@@ -393,7 +432,7 @@ function New-CustomComplianceSearch {
     return $STARTED_SEARCH
 }
 
-function List-ContentSearches {
+function Get-ContentSearches {
     # Check if there is an existing session else New-IPPSSession -UPN $UPN
     Get-ComplianceSearch | Select-Object -Property Identity, Status, ExchangeLocation, ContentMatchQuery, CreatedTime, LastModifiedTime
 }
@@ -446,42 +485,13 @@ function Get-ClickOnceApplication {
     $ClickOnceApp
 }
 # Function display console interface to run any function in the module
-function Get-PSModules {
-    $REQUIRED_MODULES = @('ExchangeOnlineManagement')
-    $REQUIRED_MODULES | ForEach-Object {
-        if (-not (Get-InstalledModule -Name $_)) {
-            try {
-                Install-Module -Name $_
-                Write-Debug "$_ module installed successfully"
-            }
-            catch {
-                Write-Error "Failed to install $_ module"
-            }
-        }
-        else {
-            Write-Debug "$_ module already installed"
-        }
-        try {
-            Import-Module -Name $_
-            Write-Debug "Loading the $_ module..."
-            Write-Debug "$_ module loaded successfully"
-        }
-        catch {
-            Write-Error "Failed to import $_ module"
-        }
-    }
-    Write-Debug ' All required modules imported successfully'
-}
+
 function Install-Dependencies {
     # Function: Check PowerShell version and edition
     # Description: This function checks the PowerShell version and edition and returns the version and edition.
-    function Test-PowerShellVersion {
-        $MIN_PS_VERSION = (7, 3)
-        if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
-    }
-    Write-Debug 'Installing required PS modules...'
-    Get-PSModules
-    Write-Debug 'Required modules installed successfully...'
+    Write-Debug "Installing Shared Dependencies..."
+    Install-SharedDependencies
+    Write-Debug 'Shared Dependencies installed successfully...'
     Write-Debug 'Verifying/Installing Unified Export Tool...'
     Get-ClickOnceApplication
     Write-Debug 'ClickOnceApplication present...'

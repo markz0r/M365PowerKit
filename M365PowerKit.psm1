@@ -86,7 +86,9 @@ function Install-Dependencies {
 function Import-NestedModules {
     # Location of the M365PowerKit.psm1 file
     # Find *.psd1 files in $PSScriptRoot subdirectories and import them
-    $NESTED_MODULE_ARRAY = Get-ChildItem -Path $PSScriptRoot -Filter '*.psd1' -Recurse -Exclude 'M365PowerKit.psd1', 'M365PowerKit-SharedFunctions.psd1' | ForEach-Object {
+    Write-Debug "Importing nested modules from: $PSScriptRoot"
+    Get-ChildItem -Path $PSScriptRoot -Filter '*.psd1' -Recurse -Exclude 'M365PowerKit.psd1'
+    $NESTED_MODULE_ARRAY = Get-ChildItem -Path $PSScriptRoot -Filter '*.psd1' -Recurse -Exclude 'M365PowerKit.psd1' | ForEach-Object {
         # If the module is not already imported, import it
         if (-not (Get-Module -Name $_.BaseName)) {
             Write-Debug "Importing module: $($_.FullName)"
@@ -99,8 +101,10 @@ function Import-NestedModules {
         if (-not (Get-Module -Name $_.BaseName)) {
             Write-Error "Failed to import module: $($_.FullName)"
         }
+        Write-Debug "Imported module: $($_.FullName)"
         return $_.BaseName
     }
+    Write-Debug "Nested modules imported: $NESTED_MODULE_ARRAY"
     $NESTED_MODULE_ARRAY
 }
 
@@ -113,7 +117,7 @@ function Invoke-M365PowerKitFunction {
         [Parameter(Mandatory = $true)]
         [hashtable]$Parameters = @{},
         [Parameter(Mandatory = $false)]
-        [switch]$SkipNestedModuleImport
+        [switch]$SkipNestedModuleImport = $false
 
     )
     if (-not $SkipNestedModuleImport) { Import-NestedModules }
