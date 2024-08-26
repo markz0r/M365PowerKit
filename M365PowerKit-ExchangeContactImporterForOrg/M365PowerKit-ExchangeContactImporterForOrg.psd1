@@ -9,7 +9,7 @@
 @{
 
     # Script module or binary module file associated with this manifest.
-    RootModule        = 'M365PowerKit-ExchangeContactImporter.psm1'
+    RootModule        = 'M365PowerKit-ExchangeContactImporterForOrg.psm1'
 
     # Version number of this module.
     ModuleVersion     = '1.0.0'

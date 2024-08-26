@@ -150,7 +150,10 @@ function Show-M365PowerKitFunctions {
     $colorIndex = 0
     $functionReferences = @{}
     $nestedModules | ForEach-Object {
-        $MODULE = Get-Module -Name $_
+        Write-Debug "Processing module: $_"
+        $MODULE_NAME = Get-Item -Path $_
+        Write-Debug "Processing module Path: $MODULE_NAME"
+        $MODULE = Get-Module -Name $($MODULE_NAME.BaseName)
         # Select a color from the list
         $color = $colors[$colorIndex % $colors.Count]
         $spaces = ' ' * (52 - $MODULE.Name.Length)
