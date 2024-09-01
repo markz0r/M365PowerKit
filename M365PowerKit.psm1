@@ -114,8 +114,8 @@ function Invoke-M365PowerKitFunction {
     param (
         [Parameter(Mandatory = $true)]
         [string]$FunctionName,
-        [Parameter(Mandatory = $true)]
-        [hashtable]$Parameters = @{},
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Parameters,
         [Parameter(Mandatory = $false)]
         [switch]$SkipNestedModuleImport = $false
 
@@ -126,9 +126,8 @@ function Invoke-M365PowerKitFunction {
         $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         # Invoke expression to run the function, splatting the parameters
         $stopwatch.Start()
-        Write-Debug "Running function: $FunctionName"
-        Write-Debug "Parameters: $($Parameters | Out-String)"
         if ($Parameters) {
+            Write-Debug "Running function: $FunctionName with parameters: $($Parameters | Out-String)"
             Invoke-Expression "$FunctionName @Parameters"
         }
         else {
@@ -182,7 +181,7 @@ function Show-M365PowerKitFunctions {
         Write-Host $spaces -BackgroundColor "Dark$color" -NoNewline
         Write-Host ' ' -BackgroundColor Black
     }
-    Write-Host 'Note: You can run functoins without this interface by calling them directly.' 
+    Write-Host 'Note: You can run functions without this interface by calling them directly.' 
     Write-Host "Example: Invoke-M365PowerKitFunction -FunctionName 'FunctionName' -Parameters @{ 'ParameterName' = 'ParameterValue' }" 
     # Write separator for readability
     Write-Host "`n" -BackgroundColor Black
