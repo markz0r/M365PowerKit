@@ -50,7 +50,6 @@ function Get-ClickOnceApplication {
     $ClickOnceApp
 }
 
-
 # Function: Install-Dependencies
 # Description: This function installs the required modules and dependencies for the script to run.
 function Install-Dependencies {
@@ -107,7 +106,6 @@ function Import-NestedModules {
     Write-Debug "Nested modules imported: $NESTED_MODULE_ARRAY"
     $NESTED_MODULE_ARRAY
 }
-
 
 # function to run provided functions with provided parameters (as hash table)
 function Invoke-M365PowerKitFunction {
@@ -191,7 +189,7 @@ function Show-M365PowerKitFunctions {
     Write-Host '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++' -BackgroundColor Black -ForegroundColor DarkGray
     # Ask the user which function they want to run
     $selectedFunction = Read-Host -Prompt "`nSelect a function to run by ID, or FunctionName [parameters] (or hit enter to exit):"
-    # if the user enters a function name, run it with the provided parameters as a hash table
+    # if the user enters a function name and parameters, run it with the provided parameters as a hash table
     if ($selectedFunction -match '(\w+)\s*\[(.*)\]') {
         $functionName = $matches[1]
         $parameters = $matches[2] -split '\s*,\s*' | ForEach-Object {
@@ -199,6 +197,9 @@ function Show-M365PowerKitFunctions {
             @{ $key = $value }
         }
         Invoke-M365PowerKitFunction -FunctionName $functionName -Parameters $parameters -SkipNestedModuleImport
+    }
+    elseif ($selectedFunction -match '(\w+)') {
+        Invoke-M365PowerKitFunction -FunctionName $selectedFunction -SkipNestedModuleImport
     }
     elseif ($selectedFunction -match '(\d+)') {
         $selectedFunction = [int]$selectedFunction
@@ -221,6 +222,7 @@ function Show-M365PowerKitFunctions {
         return $null
     }
 }
+
 # Function: New-IPPSSession
 # Description: This function creates a new Exchange Online PowerShell session.
 function New-IPPSSession {
