@@ -106,14 +106,18 @@ function Export-NewExchangeSearch {
         [Parameter(Mandatory = $false)]
         [switch]$SkipDownload = $false,
         [Parameter(Mandatory = $false)]
-        [switch]$UseAttachmentFileName = $false
+        [switch]$UseAttachmentFileName = $false,
+        [Parameter(Mandatory = $false)]
+        [switch]$PrintEmailsToPDF = $false
     )
     Start-Transcript -Append $TranscriptPath
     $SEARCH_PARAMS = @{}
     $EXPORT_PARAMS = @{
-        SkipConnIPS = $true
-        SkipModules = $true
-        BASE_DIR    = $BASE_DIR
+        SkipDownload     = $SkipDownload
+        SkipConnIPS      = $true
+        SkipModules      = $true
+        BASE_DIR         = $BASE_DIR
+        PrintEmailsToPDF = $PrintEmailsToPDF
     }
     try {
         if ($SkipModules) {
@@ -135,7 +139,7 @@ function Export-NewExchangeSearch {
         $EXPORT_PARAMS.Add('UPN', $UPN)
         if (-not $MailboxName) {
             Write-Debug 'MailboxName parameter not provided, not specifying in search...'
-            $MailboxName = "AllMailboxes"
+            $MailboxName = 'AllMailboxes'
         }
         else {
             $SEARCH_PARAMS.Add('MailboxName', $MailboxName)
@@ -145,7 +149,7 @@ function Export-NewExchangeSearch {
         if (-not $Subject) {
             # $Subject = Read-Host 'Enter the subject of the email attachments you want to retrieve (e.g.: Important Documents) [optional, hit Enter to skip]'
             Write-Debug '-Subject parameter not provided, not specifying in search...'
-            $Subject = "NoFilter"
+            $Subject = 'NoFilter'
         } 
         else {
             # Add Subject to the search parameters
@@ -153,14 +157,14 @@ function Export-NewExchangeSearch {
         }
         if (-not $Sender_Address) {
             Write-Debug "Sender_Address: $Sender_Address - not provided, not specifying in search..."
-            $Sender_Address = "AllSenders"
+            $Sender_Address = 'AllSenders'
         }
         else {
             # Add Sender_Address to the search parameters
             $SEARCH_PARAMS.Add('Sender_Address', $Sender_Address)
         }
         if (-not $AttachmentExtension) {
-            Write-Debug "AttachmentExtension: not provided, not specifying in search..."
+            Write-Debug 'AttachmentExtension: not provided, not specifying in search...'
         }
         else {
             if ($AttachmentExtension -notmatch '^\..*') {
@@ -185,7 +189,7 @@ function Export-NewExchangeSearch {
                 Write-Debug 'Continuing without StartDate and/or Sender parameters...'
             }
         }
-        if (-not $SkipConnIPS) {
+        if (!($SkipConnIPS -or $SkipDownload)) {
             New-IPPSSession -UPN $UPN
         }
         if ($StartDate) {
@@ -207,11 +211,16 @@ function Export-NewExchangeSearch {
         $SEARCH_PARAMS.Add('SearchName', $SearchName)
         $EXPORT_PARAMS.Add('SearchName', $SearchName)
         Write-Debug "Creating a new compliance search for mailbox: $MailboxName, start date: $StartDate, subject: $Subject, sender: $Sender_Address..."
-        $StartedSearchObject = New-CustomComplianceSearch @SEARCH_PARAMS
-        Write-Debug "Search created/started successfully - Search Name: $SearchName"
-        # Sleep for 20 seconds to allow the search to start
-        Start-Sleep -Seconds 10
-        Wait-CustomComplianceSearch -SearchName $SearchName
+        if ($SkipDownload) {
+            Write-Debug 'Skipping search due to -SkipDownload parameter...'
+        } 
+        else {
+            $StartedSearchObject = New-CustomComplianceSearch @SEARCH_PARAMS
+            Write-Debug "Search created/started successfully - Search Name: $SearchName"
+            # Sleep for 20 seconds to allow the search to start
+            Start-Sleep -Seconds 10
+            Wait-CustomComplianceSearch -SearchName $SearchName
+        }
         $EXPORT_PARAMS.Add('UseAttachmentFileName', $UseAttachmentFileName)
         Export-ExistingExchangeSearch @EXPORT_PARAMS
     }
@@ -242,7 +251,9 @@ function Export-ExistingExchangeSearch {
         [Parameter(Mandatory = $false)]
         [switch]$UseAttachmentFileName = $false,
         [Parameter(Mandatory = $false)]
-        [string]$BASE_DIR = 'PSTExports'
+        [string]$BASE_DIR = 'PSTExports',
+        [Parameter(Mandatory = $false)]
+        [switch]$PrintEmailsToPDF = $false
     )
     $EXAMPLE_SEARCH_NAME = "$(Get-Date -Format 'yyyyMMdd_hhmmss')-Export-Job"
     # Read user input for required parameters if not provided
@@ -252,7 +263,7 @@ function Export-ExistingExchangeSearch {
     if (-not $SearchName) {
         $SearchName = Read-Host "Enter the search name of the compliance search you want to export (e.g.: $EXAMPLE_SEARCH_NAME) [required]"
     }
-    if (-not $AttachmentExtension) {
+    if (-not $AttachmentExtension -and !$PrintEmailsToPDF) {
         $AttachmentExtension = Read-Host 'Enter the extension of the email attachments you want to retrieve (e.g.: pdf) [optional, hit Enter to skip]'
     }
     $SEARCH_DIR = "$BASE_DIR\$SearchName"
@@ -276,7 +287,7 @@ function Export-ExistingExchangeSearch {
         # Import the required modules
         Install-Dependencies
     }
-    if (!$SkipConnIPS -and !$SkipDownload) {
+    if (!($SkipConnIPS -or $SkipDownload)) {
         New-IPPSSession -UPN $UPN
     }
     # Export the compliance search results to a PST file
@@ -304,16 +315,25 @@ function Export-ExistingExchangeSearch {
         $outlook = Get-OutlookObject
     }
     Write-Debug 'Outlook COM object obtained successfully...'
-    Write-Debug 'Saving attachments...'
-    Get-ChildItem -Path "$SEARCH_DIR" -Filter '*.pst' -Recurse -ErrorAction Ignore | ForEach-Object {
-        Write-Debug "Processing PST file: $($_.Name)"
-        # if UseAttachmentFileName is set, use the attachment file name instead of the email subject
-        if ($UseAttachmentFileName) {
-            Write-Debug 'Using attachment file name instead of email subject...'
-            Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR" -UseAttachmentFileName
-        } 
-        else {
-            Get-AttachmentsFromPST -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR"
+    if ($PrintEmailsToPDF) {
+        Write-Debug 'Printing emails to PDF...'
+        Get-ChildItem -Path "$SEARCH_DIR" -Filter '*.pst' -Recurse -ErrorAction Ignore | ForEach-Object {
+            Write-Debug "Processing PST file: $($_.Name)"
+            Export-PSTitems -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -SEARCH_DIR "$SEARCH_DIR" -PrintEmailsToPDF
+        }
+    }
+    else {
+        Write-Debug 'Saving attachments...'
+        Get-ChildItem -Path "$SEARCH_DIR" -Filter '*.pst' -Recurse -ErrorAction Ignore | ForEach-Object {
+            Write-Debug "Processing PST file: $($_.Name)"
+            # if UseAttachmentFileName is set, use the attachment file name instead of the email subject
+            if ($UseAttachmentFileName) {
+                Write-Debug 'Using attachment file name instead of email subject...'
+                Export-PSTitems -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR" -UseAttachmentFileName
+            } 
+            else {
+                Export-PSTitems -PSTFile $_.Name -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -SEARCH_DIR "$SEARCH_DIR"
+            }
         }
     }
     Write-Debug 'Attachments saved successfully...'
@@ -334,7 +354,7 @@ function New-KQLQuery {
         [Parameter(Mandatory = $false)]
         [string]$FDate,
         [Parameter(Mandatory = $false)]
-        [string]$DaysBack = "2",
+        [string]$DaysBack = '2',
         [Parameter(Mandatory = $false)]
         [string]$Subject,
         [Parameter(Mandatory = $false)]
@@ -349,7 +369,7 @@ function New-KQLQuery {
         $KQL_QUERY_STRING = '((received>={0})' -f $FDate
     }
     elseif (!$DaysBack) {
-        Write-Error  "Either FDate or DaysBack is required..."
+        Write-Error  'Either FDate or DaysBack is required...'
     }
     elseif ($DaysBack -and $DaysBack -notmatch '^\d+$') {
         Write-Error "DaysBack: $DaysBack - does not match the format d+."
@@ -396,7 +416,7 @@ function New-CustomComplianceSearch {
         Write-Error 'Please provide either -FDate or -DaysBack, not both...'
     }
     elseif (-not $FDate -and -not $DaysBack) {
-        Write-Debug "Neither -FDate nor -DaysBack provided, using default of 2 days back..."
+        Write-Debug 'Neither -FDate nor -DaysBack provided, using default of 2 days back...'
     }
     elseif ($FDate) {
         $KQL_QUERY_PARAMS.Add('FDate', $FDate)
@@ -415,12 +435,12 @@ function New-CustomComplianceSearch {
     $ExistingSearch = Get-ComplianceSearch | Where-Object { $_.ContentMatchQuery -eq $KQL_QUERY_STRING }
     if ($ExistingSearch) {
         Write-Debug "Compliance Search already exists with the same KQL Query - Search Name: $($ExistingSearch.Name)"
-        Write-Debug "Skipping creating a new search...and running the existing search..."
+        Write-Debug 'Skipping creating a new search...and running the existing search...'
         Start-ComplianceSearch -Identity $ExistingSearch.Name
         $STARTED_SEARCH = "$($ExistingSearch.Name)"
     }
     else {
-        Write-Debug "Creating a new compliance search for with the following parameters:"
+        Write-Debug 'Creating a new compliance search for with the following parameters:'
         New-ComplianceSearch -Name "$SearchName" -ExchangeLocation $MailboxName -ContentMatchQuery "$KQL_QUERY_STRING" -AllowNotFoundExchangeLocationsEnabled $true -Confirm:$false
         Write-Debug "Search created successfully - Search Name: $SearchName"
         Start-Sleep -Seconds 5
@@ -489,7 +509,7 @@ function Get-ClickOnceApplication {
 function Install-Dependencies {
     # Function: Check PowerShell version and edition
     # Description: This function checks the PowerShell version and edition and returns the version and edition.
-    Write-Debug "Installing Shared Dependencies..."
+    Write-Debug 'Installing Shared Dependencies...'
     Install-SharedDependencies
     Write-Debug 'Shared Dependencies installed successfully...'
     Write-Debug 'Verifying/Installing Unified Export Tool...'
@@ -673,6 +693,92 @@ function Export-CustomComplianceSearchResults {
     Write-Debug '**********************************************************'
 }
 
+function Export-EmailsToPDF {
+    param (
+        [Parameter(Mandatory = $true)]
+        $folder,
+        [Parameter(Mandatory = $true)]
+        [string]$SEARCH_DIR,
+        [Parameter(Mandatory = $true)]
+        [System.__ComObject]$WORDCOM
+    )
+    if ($folder.name -eq 'Purges') {
+        Write-Debug "Skipping folder: $($folder.Name)"
+    }
+    else {
+        Write-Debug "Checking folder: $($folder.Name)"
+        $SEARCH_DIR_OBJECT = Get-Item -Path $SEARCH_DIR
+        $SAVE_PATH = $($SEARCH_DIR_OBJECT.FullName)
+        #Write-Debug '--------------------------------------------------'
+        #Write-Debug ($folder | Format-List * | Out-String)
+        #Write-Debug '--------------------------------------------------'
+        # Write all properties of the folder to the console, ensuring it is written as Debug output
+        #Get-ChildItem -Path $folder -Filter *.msg? | ForEach-Object {
+        foreach ($item in $folder.Items) {
+            # Get the email subject
+            Write-Debug '--------------------------------------------------'
+            Write-Debug "Checking item: $($item.Subject)"
+            Write-Debug 'Item properties: '
+            Write-Debug "$($item | Format-List * | Out-String)"
+            Write-Debug '--------------------------------------------------'
+            Write-Debug 'Item Members: '
+            Write-Debug "$($item | Get-Member | Format-List * | Out-String)"
+            Write-Debug '--------------------------------------------------'
+            $ReceivedDate = $item.ReceivedTime
+            # Format the received date as yyyy-MM-dd_HHmm
+            $ReceivedDateString = $ReceivedDate.ToString('yyyy-MM-dd_HHmm')
+            $Subject = $item.Subject
+            # Replace special characters andd spaces in the subject with '_'
+            $Subject = $Subject -replace '[^a-zA-Z0-9-_]', '_'
+            # Use only the first 24 characters of the subject
+            $Subject = $Subject.Substring(0, [math]::Min(24, $Subject.Length))
+            $FILENAME = "$($ReceivedDateString)-$($Subject)"
+            $i = 1
+            while (Test-Path "$SAVE_PATH\$FILENAME.pdf") {
+                $FILENAME = "Copy$i-$FILENAME"
+                $i++
+            }
+            Write-Debug '**********************************************************'
+            Write-Debug "Saving email: $SAVE_PATH\$FILENAME"
+            try {
+                Write-Debug "Attempting save $Subject - $ReceivedDate (type: $($item.GetType())):"
+                $msgPath = "$SAVE_PATH\$FILENAME.msg"
+                $item.SaveAs($msgPath, 3)  # Save as .msg file
+                Write-Debug "Saved as .msg: $msgPath"
+
+                # Convert .msg to PDF using Word
+                $doc = $WORDCOM.Documents.Open($msgPath)
+                $pdfPath = "$SAVE_PATH\$FILENAME.pdf"
+                $doc.SaveAs([ref] $pdfPath, [ref] 17)  # Save as PDF
+                $doc.Close()
+                Write-Debug "Saved as PDF: $pdfPath"
+            } 
+            catch {
+                Write-Debug "Failed to save email as PDF: $SAVE_PATH\$FILENAME"
+                Write-Debug ($_ | Format-List * | Out-String)
+                Write-Error "Failed to save email as PDF: $SAVE_PATH\$FILENAME"
+            }
+        }
+    }
+
+    # Recursively call the function for subfolders
+    Write-Debug 'Checking subfolders...'
+    foreach ($subfolder in $($folder.Folders)) { 
+        Write-Debug "Checking subfolder: $($subfolder.Name)"
+        try {
+            Export-EmailsToPDF -folder $subfolder -SEARCH_DIR $SEARCH_DIR -WORDCOM $WORDCOM
+        }
+        catch {
+            Write-Debug "Failed to check subfolder: $($subfolder.Name)"
+            Write-Debug ($_ | Format-List * | Out-String)
+            throw "Export-EmailsToPDF:  Failed to check subfolder: $($subfolder.Name)"
+        }
+        Write-Debug "Subfolder checked: $($subfolder.Name)"
+    }
+    Write-Debug "Export-EmailsToPDF: Completed for $($folder.Name)"
+}
+
+
 function Save-Attachments {
     param (
         [Parameter(Mandatory = $true)]
@@ -759,7 +865,7 @@ function Save-Attachments {
             Write-Debug ($_ | Format-List * | Out-String)
             throw "Save-Attachments: Failed to check subfolder: $($subfolder.Name)"
         }
-        Write-Debug "Subfolder checked: $($subfolder.Name)"
+        Write-Debug 'Subfolder checked: $($subfolder.Name)'
     }
     Write-Debug "Save-Attachments: Completed for $($folder.Name)"
 }
@@ -788,8 +894,8 @@ function Get-OutlookObject {
 }
 
 # Extract attachements from the PST file
-# Get-AttachmentsFromPST -PSTFile $_.FullName -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -BASE_DIR $BASE_DIR
-function Get-AttachmentsFromPST {
+# Export-PSTitems -PSTFile $_.FullName -outlook $outlook -SearchName $SearchName -AttachmentExtension $AttachmentExtension -BASE_DIR $BASE_DIR
+function Export-PSTitems {
     param (
         [Parameter(Mandatory = $true)]
         [string]$PSTFile,
@@ -802,21 +908,23 @@ function Get-AttachmentsFromPST {
         [Parameter(Mandatory = $true)]
         [string]$SEARCH_DIR,
         [Parameter(Mandatory = $false)]
-        [switch]$UseAttachmentFileName = $false
+        [switch]$UseAttachmentFileName = $false,
+        [Parameter(Mandatory = $false)]
+        [switch]$PrintEmailsToPDF = $false
     )
     $PST_FILE_OBJECT = Get-Item -Path "$SEARCH_DIR\$PSTFile"
     if (-not $PST_FILE_OBJECT) {
         Write-Error "PST file: $PSTFile does not exist in the output directory: $SEARCH_DIR"
-        throw "Get-AttachmentsFromPST: PST file: $PSTFile does not exist in the output directory: $SEARCH_DIR"
+        throw "Export-PSTitems: PST file: $PSTFile does not exist in the output directory: $SEARCH_DIR"
     }
-    Write-Debug "Extracting attachments from PST file: $($PST_FILE_OBJECT.FullName) to output directory: $SEARCH_DIR..."
+    Write-Debug "Exporting items PST file: $($PST_FILE_OBJECT.FullName) to output directory: $SEARCH_DIR..."
     try {
         $NameSpace = $outlook.GetNamespace('MAPI')
     } 
     catch {
         Write-Debug '$namespace = $outlook.GetNamespace(MAPI) failed, trying to get the namespace from the Outlook application...'
         Write-Debug ($_ | Format-List * | Out-String)
-        throw 'Get-AttachmentsFromPST: Failed to get the namespace from the Outlook application'
+        throw 'Export-PSTitems: Failed to get the namespace from the Outlook application'
     }
     Write-Debug '$namespace = $outlook.GetNamespace(MAPI) succeeded...'
     Write-Debug 'Adding PST file: $PSTFile to the Outlook NameSpace...'
@@ -840,8 +948,8 @@ function Get-AttachmentsFromPST {
         Start-Sleep -Seconds 10
         $NameSpace.AddStore($($PST_FILE_OBJECT.FullName))
         Write-Debug "Sleeping for 10 seconds after adding the PST file: $($PST_FILE_OBJECT.FullName)'
-        Start-Sleep -Seconds 10
-        Write-Debug 'PST Store: $($PST_FILE_OBJECT.FullName) added successfully..."
+    Start-Sleep -Seconds 10
+    Write-Debug 'PST Store: $($PST_FILE_OBJECT.FullName) added successfully..."
     }
     catch {
         # Write the error to the console but do not stop the script
@@ -858,27 +966,49 @@ function Get-AttachmentsFromPST {
     catch {
         Write-Debug '$rootFolder = $pstStore.GetRootFolder() failed'
         Write-Debug ($_ | Format-List * | Out-String)
-        throw 'Get-AttachmentsFromPST: Failed to get the root folder from the PST store'
+        throw 'Export-PSTitems: Failed to get the root folder from the PST store'
     }
     Write-Debug "rootFolder = pstStore.GetRootFolder() succeeded... for $($pstStore.Name) in $PSTFile"
     try {
-        Write-Debug "START --- SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
+        Write-Debug "START --- ITEM EXPORT... for $($pstStore.Name) in $PSTFile"
         if ($UseAttachmentFileName) {
             Write-Debug 'UseAttachmentFileName is set, using the attachment file name instead of the email subject...'
             Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension -UseAttachmentFileName
         }
         else {
-            Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension
+            if ($PrintEmailsToPDF) {
+                try {
+                    Write-Debug 'PrintEmailsToPDF is set, printing emails to PDF...'
+                    function Send-Keys {
+                        param (
+                            [string]$keys
+                        )
+                        [System.Windows.Forms.SendKeys]::SendWait($keys)
+                    }
+
+                    $WORDOBJ = New-Object -ComObject Word.Application
+                    $WORDOBJ.Visible = $false
+                    Export-EmailsToPDF -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -WORDCOM $WORDOBJ
+                }
+                finally {
+                    $word.Quit()
+                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
+                }
+            }
+            else {
+                Write-Debug 'UseAttachmentFileName is not set, using the email subject and attachment extension...'
+                Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension
+            }
+            Write-Debug "END ----SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
         }
-        Write-Debug "END ----SAVING ATTACHMENTS... for $($pstStore.Name) in $PSTFile"
     }
     catch {
         Write-Debug ($_ | Format-List * | Out-String)
-        Write-Debug "ERROR Saving attachements from $($pstStore.Name) in $PSTFile, to output directory: $SEARCH_DIR..."
-        Write-Error "Save-Attachments -folder $rootFolder -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension failed..."
-        throw 'Get-AttachmentsFromPST: Failed to save attachments from the root folder'
+        Write-Debug "ERROR exporting items from $($pstStore.Name) in $PSTFile, to output directory: $SEARCH_DIR..."
+        Write-Error "Export-PSTItems -folder $rootFolder -SEARCH_DIR $SEARCH_DIR failed..."
+        throw 'Export-PSTitems: Failed to save attachments from the root folder'
     }
-    Write-Debug "Save-Attachments -SEARCH_DIR $SEARCH_DIR -AttachmentExtension $AttachmentExtension was successful for: $($pstStore.Exchange)"
+    Write-Debug "Export-PSTItems -SEARCH_DIR $SEARCH_DIR was successful for: $($pstStore.Exchange)"
     # Remove the PST file from the Outlook NameSpace
     try {
         $NameSpace.Stores | Where-Object { (($_.isDataFileStore) -and ($_.FilePath -eq $($PST_FILE_OBJECT.FullName))) } | ForEach-Object {
