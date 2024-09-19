@@ -6,75 +6,14 @@ GitHub: https://github.com/markz0r/M365PowerKit
 #>
 
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
-$LOCAL_IPP_SESSION = $null
-
-# Function display console interface to run any function in the module
-function Get-PSModules {
-    $REQUIRED_MODULES = @('ExchangeOnlineManagement')
-    $REQUIRED_MODULES | ForEach-Object {
-        if (-not (Get-InstalledModule -Name $_)) {
-            try {
-                Install-Module -Name $_
-                Write-Debug "$_ module installed successfully"
-            }
-            catch {
-                Write-Error "Failed to install $_ module"
-            }
-        }
-        else {
-            Write-Debug "$_ module found"
-        }
-        # if module is not already imported, import it
-        try {
-            Import-Module -Name $_ -Force
-            #Write-Debug "Loading the $_ module..."
-            #Write-Debug "$_ module loaded successfully"
-        }
-        catch {
-            Write-Error "Failed to import $_ module"
-        }
-    }
-    #Write-Debug 'All required modules imported successfully'
-}
-
-function Install-Dependencies {
-    # Function: Check PowerShell version and edition
-    # Description: This function checks the PowerShell version and edition and returns the version and edition.
-    function Test-PowerShellVersion {
-        $MIN_PS_VERSION = (7, 3)
-        if ($PSVersionTable.PSVersion.Major -lt $MIN_PS_VERSION[0] -or ($PSVersionTable.PSVersion.Major -eq $MIN_PS_VERSION[0] -and $PSVersionTable.PSVersion.Minor -lt $MIN_PS_VERSION[1])) { Write-Host "Please install PowerShell $($MIN_PS_VERSION[0]).$($MIN_PS_VERSION[1]) or later, see: https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows" -ForegroundColor Red; exit }
-    }
-    #Write-Debug 'Installing required PS modules...'
-    Get-PSModules
-    #Write-Debug 'Required modules installed successfully...'
-}  
-
-# Function: New-IPPSSession
-# Description: This function creates a new Exchange Online PowerShell session.
-function New-ExchangeOnlineSession {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
-    )
-    Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue
-    Connect-ExchangeOnline -UserPrincipalName $UPN
-}
-
 # Function to Get all SMTP addresses configured for a tenant in Exchange Online
 function Get-AllSMTPAddresses {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
-    )
-    # Check if module is installed and imported
-    Install-Dependencies
+    Write-Debug 'Running Get-AllSMTPAddresses...'
+
+    # Check $env:
+
     $RUN_TIMESTAMP = Get-Date -Format 'yyyyMMdd_HHmm'
     $OUTPUT_FILE = "$($MyInvocation.MyCommand.Name)_$UPN_$RUN_TIMESTAMP.json"
-
-    if (!$LOCAL_IPP_SESSION) {
-        $LOCAL_IPP_SESSION = New-ExchangeOnlineSession -UPN $UPN
-    }
     Write-Debug 'Getting all primary SMTP addresses...'
     Write-Output '############# PRIMARY SMTP ADDRESSES #############'
     Get-EXOMailbox -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "Get-EXOMailbox_$OUTPUT_FILE"

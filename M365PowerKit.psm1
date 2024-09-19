@@ -116,7 +116,6 @@ function Invoke-M365PowerKitFunction {
         [hashtable]$Parameters,
         [Parameter(Mandatory = $false)]
         [switch]$SkipNestedModuleImport = $false
-
     )
     if (-not $SkipNestedModuleImport) { Import-NestedModules }
         
@@ -189,6 +188,11 @@ function Show-M365PowerKitFunctions {
     Write-Host '++++++++++++++++++++++++++++++++++++++++++++++++++++++++++' -BackgroundColor Black -ForegroundColor DarkGray
     # Ask the user which function they want to run
     $selectedFunction = Read-Host -Prompt "`nSelect a function to run by ID, or FunctionName [parameters] (or hit enter to exit):"
+    # if user enters a number, get the function name from the reference table and update the selectedFunction variable
+    if ($selectedFunction -match '(\d+)') {
+        $selectedFunction = [int]$selectedFunction
+        $selectedFunction = $functionReferences[$selectedFunction]
+    }
     # if the user enters a function name and parameters, run it with the provided parameters as a hash table
     if ($selectedFunction -match '(\w+)\s*\[(.*)\]') {
         $functionName = $matches[1]
@@ -196,14 +200,12 @@ function Show-M365PowerKitFunctions {
             $key, $value = $_ -split '\s*=\s*'
             @{ $key = $value }
         }
+        Write-Debug "Invoking: $functionName with parameters: $parameters"
         Invoke-M365PowerKitFunction -FunctionName $functionName -Parameters $parameters -SkipNestedModuleImport
     }
     elseif ($selectedFunction -match '(\w+)') {
+        Write-Debug "Selected function: $selectedFunction withou parameters"
         Invoke-M365PowerKitFunction -FunctionName $selectedFunction -SkipNestedModuleImport
-    }
-    elseif ($selectedFunction -match '(\d+)') {
-        $selectedFunction = [int]$selectedFunction
-        Invoke-M365PowerKitFunction -FunctionName $functionReferences[$selectedFunction] -SkipNestedModuleImport
     }
     elseif ($selectedFunction -eq '') {
         return $null
@@ -223,36 +225,46 @@ function Show-M365PowerKitFunctions {
     }
 }
 
-# Function: New-IPPSSession
-# Description: This function creates a new Exchange Online PowerShell session.
-function New-IPPSSession {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
-    )
-    try {
-        Write-Debug 'Starting New-IPPSSession...'
-        Connect-IPPSSession -UserPrincipalName $UPN
-        Write-Debug 'IPS session created successfully'
-    }
-    catch {
-        Write-Debug 'Failed to create Exchange Online PowerShell session, see:'
-        Write-Debug '   - https://learn.microsoft.com/en-us/powershell/exchange/connect-to-scc-powershell?view=exchange-ps'
-        Write-Error 'Failed establish IPS session'
-    }
-}
-
-function Use-M365PowerKit {
+function M365PowerKit {
     param (
         [Parameter(Mandatory = $false)]
         [switch]$SkipDependencies = $false,
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
+        [Parameter(Mandatory = $false)]
+        [string]$UPN,
+        [Parameter(Mandatory = $false)]
+        [string]$FunctionName,
+        [Parameter(Mandatory = $false)]
+        [hashtable]$Parameters
     )
     Import-NestedModules
     if (!$SkipDependencies) {
         Install-Dependencies
     }
-    New-IPPSSession -UPN $UPN
-    Show-M365PowerKitFunctions
+    if (!$env:M365PowerKitUPN -and !$UPN) {
+        $env:M365PowerKitUPN = Read-Host 'Enter the User Principal Name (UPN) for the Exchange Online session'
+    }
+    try {
+        New-IPPSSession
+        # If function is called with a function name, run that function with the provided parameters
+        if ($FunctionName) {
+            try {
+                Invoke-M365PowerKitFunction -FunctionName $FunctionName -Parameters $Parameters
+            }
+            catch {
+                Write-Debug "FAILED: $_"
+                Write-Error "Use-M365PowerKit: Failed to run function: $FunctionName with parameters: $Parameters"
+            }
+        }
+        else {
+            Show-M365PowerKitFunctions
+        }
+    }
+    catch {
+        Write-Debug "Failed to create IPS session with error: $_"
+        Write-Error 'Use-M365PowerKit failed to create IPS session'
+    }
+    finally {
+        # Optionally remove the UPN from the environment variable
+        # Remove-Item -Path 'env:M365PowerKitUPN'
+    }
 }

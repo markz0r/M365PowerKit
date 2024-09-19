@@ -45,7 +45,7 @@ $PARAM_HASH = @{
 }
 
 Import-Module M365PowerKit -Force
-Install-M365PowerKitDependencies -InstallDepsOnly
+# Install-M365PowerKitDependencies -InstallDepsOnly
 Invoke-M365PowerKitFunction -FunctionName "Invoke-OfficeArtifactConversion" -FunctionParameters $PARAM_HASH
 
 
@@ -58,6 +58,34 @@ $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
 $TranscriptPath = "$PSScriptRoot\Trans\$(Get-Date -Format 'yyyyMMdd_hhmmss')-Transcript.log"
 
 $DEFAULT_DOCX_TEMPLATE = "$env:USERPROFILE\B42\Zoak Solutions - Documents\Zoak_Document_Template.dotx"
+
+function Validate-DocxFile {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$DocxFile
+    )
+    if (-not (Test-Path $DocxFile)) {
+        throw "Docx file not found: $DocxFile"
+    } else {
+        Write-Output "Docx file found: $DocxFile"
+        # Attempt to open the docx file
+        $Word = New-Object -ComObject Word.Application
+        $Word.Visible = $false
+        # Ensure we print any errors to the console as Debug
+        try {
+            Write-Debug "Opening docx file: $DocxFile"
+            $Doc = $Word.Documents.Open($DocxFile)
+            Write-Debug "Docx file opened: $DocxFile"
+        } catch {
+            Write-Debug "Error opening docx file: $DocxFile"
+            Write-Debug $($_ | Format-List | Out-String)
+            Write-Error "Error opening docx file: $DocxFile"
+        }
+        finally {
+            $Word.Quit()
+        }
+    }
+}
 
 function Convert-MarkdownToDocxWithTemplate {
     param (
@@ -88,32 +116,43 @@ function Convert-MarkdownToDocxWithTemplate {
             throw "Destination file already exists: $DestinationFile"
         }
     }
+    # First convert markdown to HTML
+    $HTMLFile = $SourceFile -replace '\.md$', '.html'
+    # If ConvertFrom-Markdown is not available, install the required module
+    ConvertFrom-Markdown -Path $SourceFile -DestinationPath $HTMLFile
+
+    [ref]$SaveFormat = "microsoft.office.interop.word.WdSaveFormat" -as [type] 
     $Word = New-Object -ComObject Word.Application
     $Word.Visible = $false
     try {
-        # Convert markdown to docx
-        $Doc = $Word.Documents.Open($SourceFile)
+        # Convert HTML to docx
+        $Doc = $Word.Documents.Open($HTMLFile)
+        $Doc.saveas([ref] $docx, [ref]$SaveFormat::wdFormatDocumentDefault) 
         # Apply template
         $Doc.AttachedTemplate = $TemplateFile
-        # Save as docx
-        $Doc.SaveAs([ref]$DestinationFile, [ref]17)
+        # Save after applying template
+        $Doc.SaveAs($DestinationFile)
         Write-Output "Docx file saved: $DestinationFile"
+        $Doc.Close()
     }
     finally {
         $Word.Quit()
     }
+    Write-Debug "Validating docx file: $DestinationFile"
+    Validate-DocxFile -DocxFile $DestinationFile
 }
 
 function Invoke-OfficeArtifactory {
     param (
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$SourceFile,
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
         [string]$DestinationFile,
-        [Parameter(Mandatory = $true)]
-        [string]$TemplateFile,
+        [Parameter(Mandatory = $false)]
+        [string]$TemplateFile = $DEFAULT_DOCX_TEMPLATE,
         [Parameter(Mandatory = $true)]
         [string]$ArtifactOp,
+        [Parameter(Mandatory = $false)]
         [switch]$DisableDebug
     )
     # Start transcript logging

@@ -43,18 +43,20 @@ function Install-SharedDependencies {
 # Function: New-IPPSSession
 # Description: This function creates a new Exchange Online PowerShell session.
 function New-IPPSSession {
-    param (
-        [Parameter(Mandatory = $true)]
-        [string]$UPN
-    )
-    try {
-        Write-Debug 'Starting New-IPPSSession...'
-        Connect-IPPSSession -UserPrincipalName $UPN
-        Write-Debug 'IPS session created successfully'
+    # Check if there is an existing session
+    if (!$env:M365PowerKitUPN) {
+        Write-Error 'No UPN found in the environment variable M365PowerKitUPN'
     }
-    catch {
-        Write-Debug 'Failed to create Exchange Online PowerShell session, see:'
-        Write-Debug '   - https://learn.microsoft.com/en-us/powershell/exchange/connect-to-scc-powershell?view=exchange-ps'
-        Write-Error 'Failed establish IPS session'
+    else {
+        try {
+            Write-Debug 'Starting New-IPPSSession...'
+            Connect-IPPSSession -UserPrincipalName $env:M365PowerKitUPN
+        }
+        catch {
+            Write-Debug 'Failed to create Exchange Online PowerShell session, see:'
+            Write-Debug '   - https://learn.microsoft.com/en-us/powershell/exchange/connect-to-scc-powershell?view=exchange-ps'
+            Write-Error 'Failed establish IPS session'
+        }
+        Write-Debug 'IPS session created successfully'
     }
 }
