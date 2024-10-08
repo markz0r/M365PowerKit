@@ -1,13 +1,12 @@
 # Set exit on error
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
-
 # Function: Install-SharedDependencies
 # Description: This function installs the shared dependencies for the M365PowerKit module.
 function Install-SharedDependencies {
     function Get-PSModules {
         $REQUIRED_MODULES = @('ExchangeOnlineManagement')
         $REQUIRED_MODULES | ForEach-Object {
-            if (-not (Get-InstalledModule -Name $_)) {
+            if (-not (Get-Module -ListAvailable -Name $_)) {
                 try {
                     Install-Module -Name $_
                     Write-Debug "$_ module installed successfully"

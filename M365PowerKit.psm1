@@ -5,13 +5,13 @@
     Atlassian Cloud PowerKit module for interacting with Atlassian Cloud REST API.
     - Dependencies: M365PowerKit-Shared
     - Functions:
-      - Use-M365PowerKit: Interactive function to run any function in the module.
+      - M365PowerKit: Interactive function to run any function in the module.
     - Debug output is enabled by default. To disable, set $DisableDebug = $true before running functions.
 .EXAMPLE
-    Use-M365PowerKit
+    M365PowerKit
     This example lists all functions in the M365PowerKit module.
 .EXAMPLE
-    Use-M365PowerKit
+    M365PowerKit
     Simply run the function to see a list of all functions in the module and nested modules.
 .EXAMPLE
     Get-DefinedPowerKitVariables
@@ -56,7 +56,7 @@ function Install-Dependencies {
     function Get-PSModules {
         $REQUIRED_MODULES = @('ExchangeOnlineManagement')
         $REQUIRED_MODULES | ForEach-Object {
-            if (-not (Get-InstalledModule -Name $_)) {
+            if (-not (Get-Module -ListAvailable -Name $_ -ErrorAction SilentlyContinue)) {
                 try {
                     Install-Module -Name $_
                     Write-Debug "$_ module installed successfully"
@@ -77,7 +77,7 @@ function Install-Dependencies {
                 Write-Error "Failed to import $_ module"
             }
         }
-        Write-Debug ' All required modules imported successfully'
+        Write-Debug 'All required modules imported successfully'
     }
     Get-PSModules
 }
@@ -125,7 +125,7 @@ function Invoke-M365PowerKitFunction {
         $stopwatch.Start()
         if ($Parameters) {
             Write-Debug "Running function: $FunctionName with parameters: $($Parameters | Out-String)"
-            Invoke-Expression "$FunctionName @Parameters"
+            & $FunctionName @Parameters
         }
         else {
             Invoke-Expression $FunctionName
@@ -236,10 +236,10 @@ function M365PowerKit {
         [Parameter(Mandatory = $false)]
         [hashtable]$Parameters
     )
-    Import-NestedModules
     if (!$SkipDependencies) {
         Install-Dependencies
     }
+    Import-NestedModules
     if (!$env:M365PowerKitUPN -and !$UPN) {
         $env:M365PowerKitUPN = Read-Host 'Enter the User Principal Name (UPN) for the Exchange Online session'
     }
@@ -252,7 +252,7 @@ function M365PowerKit {
             }
             catch {
                 Write-Debug "FAILED: $_"
-                Write-Error "Use-M365PowerKit: Failed to run function: $FunctionName with parameters: $Parameters"
+                Write-Error "M365PowerKit: Failed to run function: $FunctionName with parameters: $Parameters"
             }
         }
         else {
@@ -261,7 +261,7 @@ function M365PowerKit {
     }
     catch {
         Write-Debug "Failed to create IPS session with error: $_"
-        Write-Error 'Use-M365PowerKit failed to create IPS session'
+        Write-Error 'M365PowerKit failed to create IPS session'
     }
     finally {
         # Optionally remove the UPN from the environment variable
