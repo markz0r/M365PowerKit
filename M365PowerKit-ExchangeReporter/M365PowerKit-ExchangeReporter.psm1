@@ -11,33 +11,41 @@ function Get-AllSMTPAddresses {
     Write-Debug 'Running Get-AllSMTPAddresses...'
 
     # Check $env:
-
     $RUN_TIMESTAMP = Get-Date -Format 'yyyyMMdd_HHmm'
-    $OUTPUT_FILE = "$($MyInvocation.MyCommand.Name)_$UPN_$RUN_TIMESTAMP.json"
+    $CLEAN_UPN = $($env:M365PowerKitUPN -replace '@', '_').ToLower().Trim()
+    $OUTPUT_DIR = $(Get-Location).Path + "\$CLEAN_UPN"
+    If (-not (Test-Path -Path $OUTPUT_DIR)) {
+        New-Item -Path $OUTPUT_DIR -ItemType Directory -Force
+    }
+    $OUTPUT_FILE = "$($CLEAN_UPN)_$RUN_TIMESTAMP.json"
     Write-Debug 'Getting all primary SMTP addresses...'
     Write-Output '############# PRIMARY SMTP ADDRESSES #############'
-    Get-EXOMailbox -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "Get-EXOMailbox_$OUTPUT_FILE"
+    Get-EXOMailbox | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "$OUTPUT_DIR\Get-EXOMailbox_$OUTPUT_FILE"
     # Write PRIMARY_SMTP_ADDRESSES to console as a formatted table
     #Write-Output $PRIMARY_SMTP_ADDRESSES | Format-Table
     Write-Output '##################################################'
     #Write-Debug 'Getting all SMTP addresses...'
     Write-Output '############# Get-EXORecipient SMTP ADDRESSES #############'
-    Get-EXORecipient -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "Get-EXOReceipient_$OUTPUT_FILE"
+    Get-EXORecipient -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "$OUTPUT_DIR\Get-EXORecipient_$OUTPUT_FILE"
     # Write SMTP_ADDRESSES to console as a formatted table
     #Write-Output $SMTP_ADDRESSES | Format-Table 
     Write-Output '##############################################'
     Write-Output '############# Get-Recipient SMTP ADDRESSES #############'
-    Get-Recipient -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "Get-Receipient_$OUTPUT_FILE"
+    Get-Recipient -ResultSize Unlimited | ConvertTo-Json -Depth 100 | Tee-Object -FilePath "$OUTPUT_DIR\Get-Recipient_$OUTPUT_FILE"
     Write-Output '##############################################'
-    Get-ChildItem -Filter "*$RUN_TIMESTAMP.json" | ForEach-Object { Write-Output "$($_.Name) -> $($($_ | Get-Content | Select-String -Pattern '[smtp|SMTP]:').Count)" }
+    #Get-ChildItem -Filter "*$RUN_TIMESTAMP.json" | ForEach-Object { Write-Output "$($_.Name) -> $($($_ | Get-Content | Select-String -Pattern '[smtp|SMTP]:').Count)" }
     # Create a XLSX file with all SMTP addresses and save it to the current directory, there should be 3 columns one for all each JSON file
-    $XLSX_FILE = "$($MyInvocation.MyCommand.Name)_$UPN_$RUN_TIMESTAMP.xlsx"
+    $XLSX_FILE = "$OUTPUT_DIR\$($MyInvocation.MyCommand.Name)-$CLEAN_UPN-$RUN_TIMESTAMP.xlsx"
+    Write-Debug "Creating XLSX file: $XLSX_FILE"
     # Declare raw data a PSObject with keys that match the JSON file base names, the values area an array of SMTP addresses
+    $COMBINED_DATA = @()
+    try {
+        Push-Location $OUTPUT_DIR
+        Write-Debug "Working in $OUTPUT_DIR"
 
-    # Loop through each JSON file
-
-    $COMBINED_DATA = $(Get-ChildItem -Filter "*$RUN_TIMESTAMP.json" | ForEach-Object {
+        Get-ChildItem -Filter "*$OUTPUT_FILE" | ForEach-Object {
             # Create a new object with the KEY and the SMTP_ADDRESS_ARRAY
+            Write-Debug "Processing $($_.Name)"
             $FILE = $_
             $KEY = ($FILE.BaseName -split '_')[0]
             # Get the content of the file
@@ -49,42 +57,23 @@ function Get-AllSMTPAddresses {
 
             } 
             $FILE_DATA | Export-Excel -Path $XLSX_FILE -WorksheetName $KEY -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow -TableStyle Dark8 -ClearSheet
-            $COMBINED_OBJECT = [PSCustomObject]@{
-                $KEY = $FILE_DATA.SMTP_Address
+            $COMBINED_DATA += $FILE_DATA
+        }
+        $COMBINED_DATA | Export-Excel -Path $XLSX_FILE -WorksheetName 'Combined' -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow -TableStyle Dark8 -ClearSheet -MoveToStart
+        # For each unique SMTP address, create a [PSCustomObject]@{ 'SMTP_Address' = $SMTP_ADDRESS, 'Sources' = KEYS }
+        $UNIQUE_SMTP_ADDRESSES = $COMBINED_DATA | Select-Object -Property 'SMTP_Address' -Unique | ForEach-Object {
+            $SMTP_ADDRESS = $_.SMTP_Address
+            $SOURCES = $COMBINED_DATA | Where-Object { $_.SMTP_Address -eq $SMTP_ADDRESS } | Select-Object -ExpandProperty 'Source'
+            [PSCustomObject]@{
+                'SMTP_Address' = $SMTP_ADDRESS
+                'Sources'      = $SOURCES -join ', '
             }
-            $COMBINED_OBJECT
-        })
-    Write-Debug $COMBINED_DATA.GetType()
-    Write-Debug $COMBINED_DATA.Count
-    
-    # BUILD a json object like:
-    #  '{
-    #     "Get-EXOMailbox": [
-    #     "info@zoak.com.au",
-    #     "mark.culhane7531@zoaksolutions.onmicrosoft.com"
-    #     ],
-    #     "Get-EXOReceipient": ["info@zoak.com.au", "info@zoak.solutions"],
-    #     "Get-Receipient": [
-    #     "DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@zoaksolutions.onmicrosoft.com",
-    #     "mark.culhane.ssg@zoak.solutions",
-    #     "mark.culhane.rm@zoak.solutions"
-    #     ]
-    # }'
-
-    $COMBINED_JSON = '{' 
-    $COMBINED_DATA | ForEach-Object {
-        Write-Debug "PSObject: $($_) - Properties: $($_.PSObject.Properties)"
-        $_.PSObject.Properties | ForEach-Object {
-            $COMBINED_JSON = $COMBINED_JSON + '"{0}": {1},' -f $_.Name, ($_.Value | ConvertTo-Json -Depth 5 -Compress | ForEach-Object { $_ -replace '(\{|\})', '' })
-        } }
-    $COMBINED_JSON = $COMBINED_JSON + '}'
-    # Remove the trailing comma
-    $COMBINED_JSON = $COMBINED_JSON -replace '\],\}$', ']}'
-    # Validate the JSON
-    $COMBINED_JSON | ConvertFrom-Json
-    $COMBINED_JSON | ConvertFrom-Json | ConvertTo-Csv
-
-
-    #Write-Debug $COMBINED_JSON
-    $COMBINED_JSON | ConvertFrom-Json | Export-Excel -Path $XLSX_FILE -WorksheetName 'Combined' -AutoSize -FreezeTopRow -BoldTopRow -Show  -MoveToStart
+        }
+        $UNIQUE_SMTP_ADDRESSES | Export-Excel -Path $XLSX_FILE -WorksheetName 'Unique_Addresses' -AutoSize -AutoFilter -FreezeTopRow -BoldTopRow -TableStyle Dark8 -ClearSheet -MoveToStart
+    }
+    finally {
+        # Remove the JSON files
+        Get-ChildItem -Filter "*$OUTPUT_FILE" | Remove-Item -Force
+        Pop-Location
+    }
 }

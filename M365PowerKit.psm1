@@ -245,6 +245,7 @@ function M365PowerKit {
     }
     try {
         New-IPPSSession
+        New-EXOSession
         # If function is called with a function name, run that function with the provided parameters
         if ($FunctionName) {
             try {
@@ -255,16 +256,10 @@ function M365PowerKit {
                 Write-Error "M365PowerKit: Failed to run function: $FunctionName with parameters: $Parameters"
             }
         }
-        else {
-            Show-M365PowerKitFunctions
-        }
     }
     catch {
         Write-Debug "Failed to create IPS session with error: $_"
         Write-Error 'M365PowerKit failed to create IPS session'
     }
-    finally {
-        # Optionally remove the UPN from the environment variable
-        # Remove-Item -Path 'env:M365PowerKitUPN'
-    }
+    Show-M365PowerKitFunctions
 }
