@@ -15,7 +15,7 @@ GitHub: https://github.com/markz0r/M365PowerKit
 
 $ErrorActionPreference = 'Stop'; $DebugPreference = 'Continue'
 # Start transcript logging
-$TranscriptPath = "$PSScriptRoot\Trans\$(Get-Date -Format 'yyyyMMdd_hhmmss')-Transcript.log"
+#$TranscriptPath = "$PSScriptRoot\Trans\$(Get-Date -Format 'yyyyMMdd_hhmmss')-Transcript.log"
 
 function Export-SoftwareInventory {
     [CmdletBinding()]
